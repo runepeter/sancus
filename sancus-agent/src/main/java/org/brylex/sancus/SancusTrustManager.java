@@ -30,10 +30,11 @@ public class SancusTrustManager implements X509TrustManager {
 
     public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
 
-        System.out.println(authType);
-
         final CertificateChain certificateChain = CertificateChain.create(chain);
-        new KeyStoreResolver(keyStore).resolve(certificateChain);
+
+        new KeyStoreResolver("JKS", keyStore).resolve(certificateChain);
+        //new KeyStoreResolver("DEFAULT", null).resolve(certificateChain);
+
         certificateChain.visit(new TrustMarkerVisitor(keyStore));
         callback.onCertificateChain(certificateChain);
 

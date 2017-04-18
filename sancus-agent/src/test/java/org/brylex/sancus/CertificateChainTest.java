@@ -26,7 +26,12 @@ public class CertificateChainTest {
     public static final X509Certificate CERT_STARFIELD_G2 = loadCertificate("/starfield.g2.pem");
     public static final X509Certificate CERT_HEROKU = loadCertificate("/heroku.com.pem");
     public static final X509Certificate CERT_DIGICERT_CA = loadCertificate("/digicert.ca.pem");
+    public static final X509Certificate CERT_DIGICERT_ROOT = loadCertificate("/digicert.root.pem");
     public static final X509Certificate CERT_GOOGLE_G2 = loadCertificate("/google.g2.pem");
+    public static final X509Certificate CERT_AFTENPOSTEN = loadCertificate("/aftenposten.no.pem");
+    public static final X509Certificate CERT_GODADDY_G2 = loadCertificate("/godaddy.g2.pem");
+    public static final X509Certificate CERT_GODADDY_G2_ROOT = loadCertificate("/godaddy.g2.root.pem");
+    public static final X509Certificate CERT_GODADDY_CA = loadCertificate("/godaddy.ca.pem");
     public static final X509Certificate GEOTRUST = loadCertificate("/geotrust.global.pem");
     public static final X509Certificate DIGGERDETTE = loadCertificate("/diggerdette.no.pem");
     public static final X509Certificate LETSENCRYPT = loadCertificate("/letsencrypt.org.pem");
@@ -91,8 +96,8 @@ public class CertificateChainTest {
 
         final KeyStore jks = jks("src/test/resources/geotrust.jks", "changeit");
 
-        final CertificateChain chain = CertificateChain.create(CERT_HEROKU, CERT_DIGICERT_CA);
-        assertFalse(chain.isComplete());
+        final CertificateChain chain = CertificateChain.create(CERT_AFTENPOSTEN, CERT_GODADDY_G2, CERT_GODADDY_G2_ROOT, CERT_GODADDY_CA);
+        //assertFalse(chain.isComplete());
         //assertEquals(3, chain.toList().size());
 
         resolver().resolve(chain);
@@ -125,7 +130,7 @@ public class CertificateChainTest {
     }
 
     private KeyStoreResolver resolver(KeyStore jks) throws Exception {
-        return new KeyStoreResolver(jks);
+        return new KeyStoreResolver("JKS", jks);
     }
 
 }

@@ -13,8 +13,11 @@ import java.security.cert.X509Certificate;
 public class KeyStoreResolver implements CertificateChain.Resolver {
 
     private final X509TrustManager[] trustManagers;
+    private final String name;
 
-    public KeyStoreResolver(final KeyStore keyStore) {
+    public KeyStoreResolver(final String name, final KeyStore keyStore) {
+
+        this.name = name;
 
         try {
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
@@ -52,7 +55,7 @@ public class KeyStoreResolver implements CertificateChain.Resolver {
             for (X509TrustManager trustManager : trustManagers) {
                 for (X509Certificate certificate : trustManager.getAcceptedIssuers()) {
                     if (entry.dn().equals(certificate.getSubjectDN())) {
-                        entry.apply(certificate, "JKS");
+                        entry.apply(certificate, name);
                         applied = true;
                         break;
                     }
@@ -65,6 +68,7 @@ public class KeyStoreResolver implements CertificateChain.Resolver {
         }
 
         if (entry.certificate().getSubjectDN().equals(entry.certificate().getIssuerDN())) {
+            entry.resolvedBy(name);
             return entry;
         }
 

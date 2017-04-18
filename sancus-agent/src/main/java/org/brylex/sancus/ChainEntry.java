@@ -20,8 +20,11 @@ public class ChainEntry {
         this.chain = chain;
         this.certificate = certificate;
         this.dn = certificate.getSubjectDN();
-        this.issuer = new ChainEntry(certificate.getIssuerDN(), chain);
-        this.resolvedBy = "SUPPLIED";
+        if (!certificate.getSubjectDN().equals(certificate.getIssuerDN())) {
+            this.issuer = new ChainEntry(certificate.getIssuerDN(), chain);
+        }
+
+        this.resolvedBy = "SERVER";
     }
 
     ChainEntry(Principal principal, CertificateChain chain) {
@@ -48,6 +51,11 @@ public class ChainEntry {
     }
 
     public String resolvedBy() {
+        return resolvedBy;
+    }
+
+    public String resolvedBy(String resolverId) {
+        this.resolvedBy = resolverId;
         return resolvedBy;
     }
 
@@ -91,7 +99,7 @@ public class ChainEntry {
         return buffer.toString();
     }
 
-    interface Visitor {
+    public interface Visitor {
         void visit(ChainEntry entry);
     }
 }
