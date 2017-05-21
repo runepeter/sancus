@@ -24,7 +24,7 @@ import java.util.Collection;
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 13/04/2017.
  */
-class RemoteResolver implements CertificateChain.Resolver {
+public class RemoteResolver implements CertificateChain.Resolver {
 
     private static X509Certificate downloadX509Certificate(URL url) {
 

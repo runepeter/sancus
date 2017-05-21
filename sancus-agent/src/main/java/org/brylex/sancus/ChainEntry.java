@@ -46,6 +46,11 @@ public class ChainEntry {
         return this.issuer;
     }
 
+    public ChainEntry issuedBy(Principal issuerDN) {
+        this.issuer = new ChainEntry(issuerDN, this.chain);
+        return this.issuer;
+    }
+
     public ChainEntry issuedBy() {
         return issuer;
     }
