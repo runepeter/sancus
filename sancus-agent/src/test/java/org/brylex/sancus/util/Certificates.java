@@ -1,6 +1,7 @@
 package org.brylex.sancus.util;
 
 import org.brylex.sancus.CertificateChainTest;
+import org.brylex.sancus.resolver.DirResolverTest;
 import org.brylex.sancus.resolver.RemoteResolverTest;
 
 import java.io.InputStream;
@@ -18,6 +19,7 @@ public class Certificates {
     public static final X509Certificate STARFIELD_G2 = loadCertificate("/starfield.g2.pem");
     public static final X509Certificate STARFIELD_CLASS2 = loadCertificate("/starfield.class.2.pem");
     public static final X509Certificate VALICERT_CLASS2 = loadCertificate("/valicert.class.2.pem");
+    public static final X509Certificate DIGGERDETTE = loadCertificate("/diggerdette.no.pem");
 
     private Certificates() {
     }

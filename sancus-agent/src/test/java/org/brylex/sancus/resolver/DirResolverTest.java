@@ -2,6 +2,7 @@ package org.brylex.sancus.resolver;
 
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.CertificateChainTest;
+import org.brylex.sancus.util.Certificates;
 import org.junit.Test;
 
 import java.io.InputStream;
@@ -11,6 +12,9 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.List;
 
+import static org.brylex.sancus.util.Certificates.AWS_AMAZON;
+import static org.brylex.sancus.util.Certificates.DIGGERDETTE;
+import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.junit.Assert.*;
 
@@ -19,8 +23,14 @@ import static org.junit.Assert.*;
  */
 public class DirResolverTest {
 
-    public static final X509Certificate DIGGERDETTE = loadCertificate("/diggerdette.no.pem");
-    public static final X509Certificate CERT_AWS = loadCertificate("/aws.amazon.com.pem");
+    private static X509Certificate loadCertificate(String path) {
+        try (InputStream is = CertificateChainTest.class.getResourceAsStream(path)) {
+            CertificateFactory factory = CertificateFactory.getInstance("X.509");
+            return (X509Certificate) factory.generateCertificate(is);
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to load certificate from classpath resources [" + path + "].", e);
+        }
+    }
 
     @Test(expected = IllegalArgumentException.class)
     public void nullDirShouldThrowException() throws Exception {
@@ -54,23 +64,13 @@ public class DirResolverTest {
 
         final Path dir = Paths.get("src/test/resources/");
 
-        final CertificateChain chain = CertificateChain.create(CERT_AWS);
+        final CertificateChain chain = CertificateChain.create(AWS_AMAZON);
 
         new DirResolver(dir).resolve(chain);
 
-        System.out.println(chain);
-
         List<X509Certificate> certificates = chain.toList();
-        assertThat(certificates.size(), equalTo(5));
+        assertThat(certificates.size(), equalTo(6));
+        assertThat(chain.last().certificate(), is(Certificates.VALICERT_CLASS2));
         assertTrue(chain.isComplete());
-    }
-
-    private static X509Certificate loadCertificate(String path) {
-        try (InputStream is = CertificateChainTest.class.getResourceAsStream(path)) {
-            CertificateFactory factory = CertificateFactory.getInstance("X.509");
-            return (X509Certificate) factory.generateCertificate(is);
-        } catch (Exception e) {
-            throw new RuntimeException("Unable to load certificate from classpath resources [" + path + "].", e);
-        }
     }
 }

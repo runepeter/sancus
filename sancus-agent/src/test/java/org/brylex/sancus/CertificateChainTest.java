@@ -22,23 +22,13 @@ import static org.junit.Assert.*;
 public class CertificateChainTest {
 
     public static final X509Certificate CERT_GMAIL = loadCertificate("/mail.google.com.pem");
-    public static final X509Certificate CERT_AWS = loadCertificate("/aws.amazon.com.pem");
-    public static final X509Certificate CERT_AMAZON = loadCertificate("/amazon.pem");
-    public static final X509Certificate CERT_AMAZON_CA = loadCertificate("/amazon.ca.pem");
-    public static final X509Certificate CERT_STARFIELD_G2 = loadCertificate("/starfield.g2.pem");
-    public static final X509Certificate CERT_HEROKU = loadCertificate("/heroku.com.pem");
-    public static final X509Certificate CERT_DIGICERT_CA = loadCertificate("/digicert.ca.pem");
-    public static final X509Certificate CERT_DIGICERT_ROOT = loadCertificate("/digicert.root.pem");
     public static final X509Certificate CERT_GOOGLE_G2 = loadCertificate("/google.g2.pem");
     public static final X509Certificate CERT_AFTENPOSTEN = loadCertificate("/aftenposten.no.pem");
     public static final X509Certificate CERT_GODADDY_G2 = loadCertificate("/godaddy.g2.pem");
     public static final X509Certificate CERT_GODADDY_G2_ROOT = loadCertificate("/godaddy.g2.root.pem");
     public static final X509Certificate CERT_GODADDY_CA = loadCertificate("/godaddy.ca.pem");
-    public static final X509Certificate GEOTRUST = loadCertificate("/geotrust.global.pem");
     public static final X509Certificate DIGGERDETTE = loadCertificate("/diggerdette.no.pem");
     public static final X509Certificate LETSENCRYPT = loadCertificate("/letsencrypt.org.pem");
-    public static final X509Certificate VERISIGN_COM = loadCertificate("/verisign.com.pem");
-    public static final X509Certificate SYMANTEC_G3 = loadCertificate("/symantec.g3.pem");
 
     static {
         Security.addProvider(new BouncyCastleProvider());
