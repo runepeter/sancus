@@ -1,7 +1,6 @@
 package org.brylex.sancus.cli;
 
 import com.google.common.base.Strings;
-import io.vertx.rxjava.core.Vertx;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.brylex.sancus.*;
 import org.brylex.sancus.resolver.DirResolver;
@@ -70,8 +69,6 @@ public class SancusCli implements CertificateChain.Callback {
     }
 
     private void doIt() {
-
-        final Vertx vertx = Vertx.vertx();
 
         CertificateChain chain = resolveCertificateChain();
         Util.printChain(chain);
