@@ -1,5 +1,7 @@
 package org.brylex.sancus;
 
+import org.brylex.sancus.util.Util;
+
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 import java.security.KeyStore;
@@ -12,7 +14,7 @@ public class TrustMarkerVisitor implements ChainEntry.Visitor {
 
     private final X509TrustManager tm;
 
-    TrustMarkerVisitor(KeyStore jks) {
+    public TrustMarkerVisitor(KeyStore jks) {
         try {
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             tmf.init(jks);
@@ -28,7 +30,7 @@ public class TrustMarkerVisitor implements ChainEntry.Visitor {
     public void visit(ChainEntry entry) {
 
         for (X509Certificate issuer : tm.getAcceptedIssuers()) {
-            if (issuer.getSubjectDN().equals(entry.dn())) {
+            if (Util.equals(issuer.getSubjectDN(), entry.dn())) {
                 entry.trustedBy("TRUSTER");
             }
         }
@@ -38,4 +40,5 @@ public class TrustMarkerVisitor implements ChainEntry.Visitor {
             issuer.visit(this);
         }
     }
+
 }

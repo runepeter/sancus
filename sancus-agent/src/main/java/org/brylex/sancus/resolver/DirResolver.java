@@ -37,6 +37,7 @@ public class DirResolver implements CertificateChain.Resolver {
 
         try {
             final CertificateFactory factory = CertificateFactory.getInstance("X.509");
+
             Files.newDirectoryStream(dir).forEach(path -> {
 
                 if (path.toString().endsWith(".pem")) {

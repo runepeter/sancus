@@ -1,5 +1,6 @@
-package org.brylex.sancus;
+package org.brylex.sancus.resolver;
 
+import com.google.common.io.ByteStreams;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.DERTaggedObject;
@@ -13,11 +14,15 @@ import org.bouncycastle.cms.CMSSignedData;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.Store;
 import org.bouncycastle.x509.extension.X509ExtensionUtil;
+import org.brylex.sancus.CertificateChain;
+import org.brylex.sancus.ChainEntry;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
 
@@ -30,7 +35,14 @@ public class RemoteResolver implements CertificateChain.Resolver {
 
         final JcaX509CertificateConverter converter = new JcaX509CertificateConverter().setProvider(BouncyCastleProvider.PROVIDER_NAME);
 
+        byte [] bytes;
         try (InputStream is = url.openStream()) {
+            bytes = ByteStreams.toByteArray(is);
+        } catch (IOException e) {
+            throw new RuntimeException("Unable to download remote certificare stream.", e);
+        }
+
+        try (InputStream is = new ByteArrayInputStream(bytes)) {
 
             CMSSignedData sd = new CMSSignedData(is);
             Store certificates = sd.getCertificates();
@@ -41,11 +53,24 @@ public class RemoteResolver implements CertificateChain.Resolver {
                 return converter.getCertificate(holder);
             }
 
+        } catch (CMSException e) {
+
+            return loadCertificate(bytes);
+
         } catch (Exception e) {
             throw new RuntimeException("Certificate could not be downloaded.", e);
         }
 
         throw new RuntimeException("Certificate not found.");
+    }
+
+    private static X509Certificate loadCertificate(byte [] bytes) {
+        try (InputStream is = new ByteArrayInputStream(bytes)) {
+            CertificateFactory factory = CertificateFactory.getInstance("X.509");
+            return (X509Certificate) factory.generateCertificate(is);
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to load DER-encoded certificate.", e);
+        }
     }
 
     private static URL getIssuerCaUrl(X509Certificate certificate) {
@@ -113,9 +138,22 @@ public class RemoteResolver implements CertificateChain.Resolver {
         }
 
         ChainEntry issuer = entry.issuedBy();
+
+        if (issuer == null) {
+            entry.issuedBy(entry.certificate().getIssuerDN());
+            issuer = entry.issuedBy();
+        }
+
         if (issuer.certificate() == null) {
+
             URL url = getIssuerCaUrl(entry.certificate());
-            System.out.println("URL 2: " + url);
+
+            if (url == null) {
+                System.out.println("Unable to resolve issuer certification remote download location.\n");
+                return entry;
+            }
+
+            System.out.println("\nDownloading issuer certificate from [" + url + "]\n");
             X509Certificate certificate = downloadX509Certificate(url);
             issuer.apply(certificate, "REMOTE");
         }

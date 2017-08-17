@@ -1,7 +1,9 @@
 package org.brylex.sancus;
 
+import org.brylex.sancus.resolver.KeyStoreResolver;
+import org.brylex.sancus.util.Util;
+
 import javax.net.ssl.X509TrustManager;
-import java.security.KeyStore;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 
@@ -10,14 +12,12 @@ import java.security.cert.X509Certificate;
  */
 public class SancusTrustManager implements X509TrustManager {
 
-    private final KeyStore keyStore;
+    private final CertificateChain certificateChain;
     private final X509TrustManager tm;
-    private final CertificateChain.Callback callback;
 
-    public SancusTrustManager(KeyStore keyStore, X509TrustManager tm, CertificateChain.Callback callback) {
-        this.keyStore = keyStore;
+    public SancusTrustManager(CertificateChain certificateChain, X509TrustManager tm) {
+        this.certificateChain = certificateChain;
         this.tm = tm;
-        this.callback = callback;
     }
 
     public X509Certificate[] getAcceptedIssuers() {
@@ -30,13 +30,11 @@ public class SancusTrustManager implements X509TrustManager {
 
     public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
 
-        final CertificateChain certificateChain = CertificateChain.create(chain);
+        certificateChain.apply(chain);
 
-        new KeyStoreResolver("JKS", keyStore).resolve(certificateChain);
-        //new KeyStoreResolver("DEFAULT", null).resolve(certificateChain);
+        new KeyStoreResolver("JKS", certificateChain.jks()).resolve(certificateChain);
 
-        certificateChain.visit(new TrustMarkerVisitor(keyStore));
-        callback.onCertificateChain(certificateChain);
+        certificateChain.visit(new TrustMarkerVisitor(certificateChain.jks()));
 
         tm.checkServerTrusted(chain, authType);
     }

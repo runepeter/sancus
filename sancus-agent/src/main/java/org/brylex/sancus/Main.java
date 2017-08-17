@@ -81,7 +81,7 @@ public class Main {
 
             HttpClientOptions options = new HttpClientOptions();
             options.setSsl(true);
-            options.setTrustOptions(new SancusTrustOptions(trustOptions));
+            //options.setTrustOptions(new SancusTrustOptions(trustOptions));
 
             HttpClientRequest request = vertx.createHttpClient(options).request(HttpMethod.GET, 443, "aws.amazon.com", "/");
             request.setTimeout(5000).toObservable().subscribe(

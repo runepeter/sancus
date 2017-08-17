@@ -1,10 +1,13 @@
-package org.brylex.sancus;
+package org.brylex.sancus.resolver;
+
+import org.brylex.sancus.CertificateChain;
+import org.brylex.sancus.ChainEntry;
+import org.brylex.sancus.util.Util;
 
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 import java.security.KeyStore;
-import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 
 /**
@@ -51,10 +54,10 @@ public class KeyStoreResolver implements CertificateChain.Resolver {
         if (entry.certificate() == null) {
 
             boolean applied = false;
-            // resolve based on DN
+
             for (X509TrustManager trustManager : trustManagers) {
                 for (X509Certificate certificate : trustManager.getAcceptedIssuers()) {
-                    if (entry.dn().equals(certificate.getSubjectDN())) {
+                    if (Util.equals(entry.dn(), certificate.getSubjectDN())) {
                         entry.apply(certificate, name);
                         applied = true;
                         break;
@@ -67,7 +70,7 @@ public class KeyStoreResolver implements CertificateChain.Resolver {
             }
         }
 
-        if (entry.certificate().getSubjectDN().equals(entry.certificate().getIssuerDN())) {
+        if (Util.equals(entry.certificate().getSubjectDN(), entry.certificate().getIssuerDN())) {
             entry.resolvedBy(name);
             return entry;
         }

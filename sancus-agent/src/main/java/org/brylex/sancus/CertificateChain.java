@@ -1,7 +1,9 @@
 package org.brylex.sancus;
 
 import com.google.common.collect.Lists;
+import org.brylex.sancus.resolver.HandshakeResolver;
 
+import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
@@ -17,19 +19,49 @@ import static com.google.common.base.Preconditions.checkArgument;
 public class CertificateChain {
 
     private final KeyStore jks;
-    private final ChainEntry head;
+    private ChainEntry head;
     private ChainEntry last;
-    private CertificateChain(X509Certificate certificate) {
-        this.head = new ChainEntry(certificate, this);
+
+    private CertificateChain(KeyStore jks) {
+        this.jks = jks;
+    }
+
+    private CertificateChain(X509Certificate... certificate) {
+        apply(certificate);
         try {
             this.jks = KeyStore.getInstance("JKS");
             this.jks.load(null);
         } catch (Exception e) {
-            throw new RuntimeException("Unable to initialize empty JKS.", e);
+            throw new RuntimeException("Unable to initialize create JKS.", e);
         }
     }
 
-    public static CertificateChain create(X509Certificate... chain) {
+    public static CertificateChain create(KeyStore jks) {
+
+        applyDummyCertIfEmptyJks(jks);
+
+        return new CertificateChain(jks);
+    }
+
+    private static void applyDummyCertIfEmptyJks(KeyStore jks) {
+        try {
+            if (jks.size() == 0) {
+
+                KeyStore dummy = KeyStore.getInstance("JKS");
+                try (InputStream is = HandshakeResolver.class.getResourceAsStream("/dummy.jks")) {
+                    dummy.load(is, "changeit".toCharArray());
+                }
+
+                java.security.cert.Certificate dummyCertificate = dummy.getCertificate("sancus-dummy");
+
+                jks.setCertificateEntry("dummy-sancus", dummyCertificate);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to generate and apply dummy certificate to empty KeyStore.", e);
+        }
+    }
+
+    public CertificateChain apply(X509Certificate... chain) {
 
         checkArgument(chain != null);
         checkArgument(chain.length > 0);
@@ -39,15 +71,22 @@ public class CertificateChain {
 
         Iterator<X509Certificate> iterator = list.iterator();
 
-        CertificateChain c = new CertificateChain(iterator.next());
+        this.head = new ChainEntry(iterator.next(), this);
 
-        ChainEntry entry = c.head;
+        ChainEntry entry = this.head;
         while (iterator.hasNext()) {
             X509Certificate next = iterator.next();
             entry = entry.issuedBy(next);
         }
 
-        c.last = entry;
+        this.last = entry;
+
+        return this;
+    }
+
+    public static CertificateChain create(X509Certificate... chain) {
+
+        CertificateChain c = new CertificateChain(chain);
 
         return c;
     }
@@ -56,7 +95,7 @@ public class CertificateChain {
         return head.issuedBy();
     }
 
-    KeyStore jks() {
+    public KeyStore jks() {
         return jks;
     }
 

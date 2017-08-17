@@ -1,6 +1,8 @@
 package org.brylex.sancus;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.brylex.sancus.resolver.KeyStoreResolver;
+import org.brylex.sancus.resolver.RemoteResolver;
 import org.junit.Test;
 
 import java.io.FileInputStream;
@@ -75,7 +77,7 @@ public class CertificateChainTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void emptyNullCertificateChain() throws Exception {
-        CertificateChain.create(null);
+        CertificateChain.create((X509Certificate[]) null);
     }
 
     @Test

@@ -1,5 +1,7 @@
 package org.brylex.sancus;
 
+import org.brylex.sancus.util.Util;
+
 import java.security.KeyStoreException;
 import java.security.Principal;
 import java.security.cert.X509Certificate;
@@ -77,8 +79,10 @@ public class ChainEntry {
         this.certificate = certificate;
         this.resolvedBy = resolverId;
 
-        if (certificate.getSubjectDN().equals(certificate.getIssuerDN())) {
+        if (Util.equals(certificate.getSubjectDN(), certificate.getIssuerDN())) {
             this.chain.last(this);
+        } else {
+            issuedBy(certificate.getIssuerDN());
         }
 
         try {

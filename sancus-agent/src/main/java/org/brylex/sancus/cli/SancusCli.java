@@ -1,14 +1,14 @@
 package org.brylex.sancus.cli;
 
 import com.google.common.base.Strings;
-import io.vertx.core.net.JksOptions;
 import io.vertx.rxjava.core.Vertx;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.brylex.sancus.CertificateChain;
-import org.brylex.sancus.ChainEntry;
-import org.brylex.sancus.RemoteResolver;
-import org.brylex.sancus.SancusTrustOptions;
+import org.brylex.sancus.*;
 import org.brylex.sancus.resolver.DirResolver;
+import org.brylex.sancus.resolver.HandshakeResolver;
+import org.brylex.sancus.resolver.KeyStoreResolver;
+import org.brylex.sancus.resolver.RemoteResolver;
+import org.brylex.sancus.util.Util;
 import org.fusesource.jansi.Ansi;
 import org.fusesource.jansi.AnsiConsole;
 import org.kohsuke.args4j.CmdLineException;
@@ -16,19 +16,18 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 
 import javax.net.ssl.*;
-import java.io.BufferedReader;
-import java.io.Console;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
 import java.security.Security;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.fusesource.jansi.Ansi.Color.BLUE;
-import static org.fusesource.jansi.Ansi.Color.RED;
 import static org.fusesource.jansi.Ansi.ansi;
 
 /**
@@ -36,24 +35,22 @@ import static org.fusesource.jansi.Ansi.ansi;
  */
 public class SancusCli implements CertificateChain.Callback {
 
-    @Option(name = "-host", usage = "Hostname to connect to", required = true)
-    public String host;
-
-    @Option(name = "-port", usage = "Port to connect to")
-    public int port = 443;
-
-    @Option(name = "-truststore", usage = "Truststore to validate against")
-    public Path trustStore;
-
-    @Option(name = "-truststorepwd", usage = "Truststore password")
-    public String trustStorePassword = "changeit";
-
-    @Option(name = "-i", usage = "Interactive mode")
-    public boolean interactiveMode = false;
-
     static {
         Security.addProvider(new BouncyCastleProvider());
     }
+
+    @Option(name = "--host", aliases = "-h", usage = "Hostname to connect to", forbids = "--cert")
+    public String host;
+    @Option(name = "-port", usage = "Port to connect to")
+    public int port = 443;
+    @Option(name = "--cert", aliases = "-c", usage = "Certificate to trust", forbids = "--host")
+    public Path certificate;
+    @Option(name = "-truststore", usage = "Truststore to validate against")
+    public Path trustStore;
+    @Option(name = "-truststorepwd", usage = "Truststore password")
+    public String trustStorePassword = "changeit";
+    @Option(name = "-i", usage = "Interactive mode")
+    public boolean interactiveMode = false;
 
     public static void main(String[] args) throws InterruptedException {
 
@@ -76,8 +73,8 @@ public class SancusCli implements CertificateChain.Callback {
 
         final Vertx vertx = Vertx.vertx();
 
-        CertificateChain chain = resolveCertificateChain(vertx);
-        printChain(chain);
+        CertificateChain chain = resolveCertificateChain();
+        Util.printChain(chain);
 
         String command;
 
@@ -90,6 +87,12 @@ public class SancusCli implements CertificateChain.Callback {
             }
             if ("r".equalsIgnoreCase(command)) {
                 resolveCommandHandler(chain);
+            }
+            if ("h".equalsIgnoreCase(command)) {
+                handshakeCommandHandler(chain);
+            }
+            if ("s".equalsIgnoreCase(command)) {
+                saveCommandHandler(chain);
             }
         }
     }
@@ -122,68 +125,43 @@ public class SancusCli implements CertificateChain.Callback {
         }
     }
 
+    private void saveCommandHandler(CertificateChain chain) {
 
-    private void resolveCommandHandler(CertificateChain chain) {
-
-        Ansi a = ansi()
-                .a("\nResolve missing certificates from one of the following sources:\n\n")
-                .bold().fg(Ansi.Color.GREEN).a("1. ").fgBlue().a("DEFAULT").reset().a(" jks [").a(getEffectiveDefaultJksPath().toString()).a("].\n")
-                .bold().fg(Ansi.Color.GREEN).a("2. ").reset().a("Remotely resolve issuer from certificate extension value (requires Internet access).\n")
-                .bold().fg(Ansi.Color.GREEN).a("3. ").reset().a("JKS file.").a('\n')
-                .bold().fg(Ansi.Color.GREEN).a("4. ").reset().a("From file folder with PEMs.");
-
-        System.out.println(a);
         System.out.println();
-
-        String option = consoleInput("Option");
-        if ("1".equalsIgnoreCase(option)) {
-            System.out.println(ansi().fgRed().a("Option [").bold().a(option).boldOff().a("] NOT implemented.").reset());
-        } else if ("2".equalsIgnoreCase(option)) {
-
-            final RemoteResolver resolver = new RemoteResolver();
-            resolver.resolve(chain);
-
-            printChain(chain);
-
-        } else if ("3".equalsIgnoreCase(option)) {
-            System.out.println(ansi().fgRed().a("Option [").bold().a(option).boldOff().a("] NOT implemented.").reset());
-        } else if ("4".equalsIgnoreCase(option)) {
-
-            System.out.println();
-            String dir = consoleInput("Path");
-            System.out.println();
-            
-            Path path = Paths.get(dir);
-            new DirResolver(path).resolve(chain);
-            printChain(chain);
-
-        } else {
-            System.out.println(ansi().fgRed().a("Unknown option [").bold().a(option).boldOff().a("].").reset());
-        }
-        System.out.println();
-    }
-
-    private CertificateChain resolveCertificateChain(Vertx vertx) {
-
-        final AtomicReference<CertificateChain> certificateChain = new AtomicReference<>();
-
-        JksOptions jksOptions = new JksOptions();
-        jksOptions.setPath(resolveJksPath().toAbsolutePath().toString());
-        jksOptions.setPassword(trustStorePassword);
-
-        SancusTrustOptions sancusTrustOptions = new SancusTrustOptions(jksOptions);
-        sancusTrustOptions.setCallback(new CertificateChain.Callback() {
-            @Override
-            public void onCertificateChain(CertificateChain chain) {
-                certificateChain.set(chain);
-            }
-        });
 
         try {
-            TrustManagerFactory trustManagerFactory = sancusTrustOptions.getTrustManagerFactory(vertx.getDelegate());
+            if (chain.jks().size() == 1 && chain.jks().containsAlias("dummy-sancus")) {
+                System.out.println("KeyStore is empty. Nothing to save.\n");
+                return;
+            }
+        } catch (KeyStoreException e) {
+            throw new RuntimeException("Unable to inspect KeyStore.", e);
+        }
+
+        try (OutputStream os = Files.newOutputStream(trustStore, StandardOpenOption.CREATE)) {
+
+            if (chain.jks().containsAlias("dummy-sancus")) {
+                chain.jks().deleteEntry("dummy-sancus");
+            }
+
+            chain.jks().store(os, trustStorePassword.toCharArray());
+            System.out.println("Successfully saved KeyStore at [" + trustStore.toAbsolutePath() + "].\n");
+
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to save KeyStore at [" + trustStore.toAbsolutePath() + "].", e);
+        }
+    }
+
+    private void handshakeCommandHandler(CertificateChain chain) {
+
+        System.out.println("\nPerforming SSL Handshake with [" + host + ":" + port + "] ...");
+
+        try {
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(chain.jks());
 
             SSLContext context = SSLContext.getInstance("SSL");
-            context.init(null, trustManagerFactory.getTrustManagers(), null);
+            context.init(null, tmf.getTrustManagers(), null);
 
             SSLSocketFactory factory = context.getSocketFactory();
             SSLSocket socket = (SSLSocket) factory.createSocket(host, port);
@@ -201,14 +179,100 @@ public class SancusCli implements CertificateChain.Callback {
                 System.out.println(ansi().a("Status: ").fg(Ansi.Color.RED).a("TIMEOUT_EXCEPTION").reset());
             } else if (e instanceof SSLHandshakeException) {
                 System.out.println(ansi().a("Status: ").fg(Ansi.Color.RED).a("SSL_HANDSHAKE_EXCEPTION").reset());
+                System.out.println(ansi().a(" Cause: ").fg(Ansi.Color.YELLOW).a(e.getCause()).reset());
             } else {
                 throw new RuntimeException(e);
             }
         }
 
+        chain.visit(new TrustMarkerVisitor(chain.jks()));
+
+        System.out.println();
+        Util.printChain(chain);
+    }
+
+    private void resolveCommandHandler(CertificateChain chain) {
+
+        Ansi a = ansi()
+                .a("\nResolve missing certificates from one of the following sources:\n\n")
+                .bold().fg(Ansi.Color.GREEN).a("1. ").fgBlue().a("DEFAULT").reset().a(" jks [").a(Util.getEffectiveDefaultJksPath().toString()).a("].\n")
+                .bold().fg(Ansi.Color.GREEN).a("2. ").reset().a("Remotely resolve issuer from certificate extension value (requires Internet access).\n")
+                .bold().fg(Ansi.Color.GREEN).a("3. ").reset().a("JKS file.").a('\n')
+                .bold().fg(Ansi.Color.GREEN).a("4. ").reset().a("From file folder with PEMs.");
+
+        System.out.println(a);
         System.out.println();
 
-        return certificateChain.get();
+        String option = consoleInput("Option");
+        if ("1".equalsIgnoreCase(option)) {
+
+            KeyStore defaultKeyStore = Util.loadKeyStore(resolveDefaultJksPath(), "changeit");
+
+            new KeyStoreResolver("DEFAULT", defaultKeyStore).resolve(chain);
+
+            Util.printChain(chain);
+
+        } else if ("2".equalsIgnoreCase(option)) {
+
+            final RemoteResolver resolver = new RemoteResolver();
+            resolver.resolve(chain);
+
+            Util.printChain(chain);
+
+        } else if ("3".equalsIgnoreCase(option)) {
+            System.out.println(ansi().fgRed().a("Option [").bold().a(option).boldOff().a("] NOT implemented.").reset());
+        } else if ("4".equalsIgnoreCase(option)) {
+
+            System.out.println();
+            String dir = consoleInput("Path");
+            System.out.println();
+
+            Path path = Paths.get(dir);
+            new DirResolver(path).resolve(chain);
+            Util.printChain(chain);
+
+        } else {
+            System.out.println(ansi().fgRed().a("Unknown option [").bold().a(option).boldOff().a("].").reset());
+        }
+    }
+
+    private CertificateChain resolveCertificateChain() {
+
+        final KeyStore jks = initKeyStore();
+
+        CertificateChain certificateChain = CertificateChain.create(jks);
+
+        new HandshakeResolver(host, port).resolve(certificateChain);
+
+        return certificateChain;
+    }
+
+    private KeyStore initKeyStore() {
+
+        Path jksPath = resolveJksPath();
+
+        KeyStore jks;
+        if (jksPath.toFile().isFile()) {
+
+            try (InputStream is = Files.newInputStream(jksPath, StandardOpenOption.READ)) {
+                jks = KeyStore.getInstance("JKS");
+                jks.load(is, trustStorePassword.toCharArray());
+                System.out.println("Loaded KeyStore [" + jksPath.toAbsolutePath() + "].");
+            } catch (Exception e) {
+                throw new RuntimeException("Unable to initialize empty KeyStore [" + jksPath + "].", e);
+            }
+
+        } else {
+
+            try {
+                jks = KeyStore.getInstance("JKS");
+                jks.load(null);
+                System.out.println("Initializing brand new KeyStore at [" + jksPath.toAbsolutePath() + "].");
+            } catch (Exception e) {
+                throw new RuntimeException("Unable to load KeyStore [" + jksPath.toAbsolutePath() + "].", e);
+            }
+        }
+        return jks;
     }
 
     private Path resolveJksPath() {
@@ -225,7 +289,7 @@ public class SancusCli implements CertificateChain.Callback {
 
     private Path resolveDefaultJksPath() {
 
-        Path path = getEffectiveDefaultJksPath();
+        Path path = Util.getEffectiveDefaultJksPath();
 
         System.out.println(ansi().a("Verifying trust using ").fg(BLUE).a("DEFAULT").reset().a(" [").bold().a(path.toAbsolutePath()).boldOff().a("]."));
         System.out.println();
@@ -233,41 +297,9 @@ public class SancusCli implements CertificateChain.Callback {
         return path;
     }
 
-    private Path getEffectiveDefaultJksPath() {
-        String javaHome = System.getProperty("java.home");
-
-        Path path = Paths.get(javaHome, "lib/security/jssecacerts");
-        if (!path.toFile().exists()) {
-            path = Paths.get(javaHome, "lib/security/cacerts");
-        }
-        return path;
-    }
-
     @Override
     public void onCertificateChain(CertificateChain chain) {
-        printChain(chain);
+        Util.printChain(chain);
     }
 
-    private void printChain(CertificateChain chain) {
-        chain.visit(new ChainEntry.Visitor() {
-            @Override
-            public void visit(ChainEntry entry) {
-
-                boolean trusted = !entry.trustedBy().equals("NOT");
-                String r = Strings.padEnd(entry.resolvedBy(), 7, ' ');
-                Ansi.Color rc = r.equals("DEFAULT") ? Ansi.Color.YELLOW : Ansi.Color.BLUE;
-                rc = r.equals("MISSING") ? RED : rc;
-
-                String t = trusted ? "T" : "U";
-                Ansi.Color tc = trusted ? Ansi.Color.GREEN : RED;
-
-                Ansi ansi = ansi()
-                        .a("[").bold().fg(rc).a(r).reset().a("]")
-                        .a("[").bold().fg(tc).a(t).reset().a("]")
-                        .a(" " + entry.dn());
-                System.out.println(ansi);
-            }
-        });
-        System.out.println();
-    }
 }
