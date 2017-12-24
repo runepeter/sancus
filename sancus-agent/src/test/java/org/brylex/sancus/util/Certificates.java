@@ -20,6 +20,8 @@ public class Certificates {
     public static final X509Certificate STARFIELD_CLASS2 = loadCertificate("/starfield.class.2.pem");
     public static final X509Certificate VALICERT_CLASS2 = loadCertificate("/valicert.class.2.pem");
     public static final X509Certificate DIGGERDETTE = loadCertificate("/diggerdette.no.pem");
+    public static final X509Certificate LETSENCRYPT = loadCertificate("/letsencrypt.org.pem");
+    public static final X509Certificate DST_ROOT = loadCertificate("/dst.root.x3.pem");
 
     private Certificates() {
     }

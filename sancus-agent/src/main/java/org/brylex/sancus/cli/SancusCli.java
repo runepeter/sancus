@@ -1,6 +1,5 @@
 package org.brylex.sancus.cli;
 
-import com.google.common.base.Strings;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.brylex.sancus.*;
 import org.brylex.sancus.resolver.DirResolver;
@@ -77,7 +76,7 @@ public class SancusCli implements CertificateChain.Callback {
 
         while (true) {
 
-            command = consoleInput("Operation");
+            command = Util.consoleInput("Operation");
 
             if ("q".equalsIgnoreCase(command)) {
                 System.exit(1);
@@ -91,34 +90,6 @@ public class SancusCli implements CertificateChain.Callback {
             if ("s".equalsIgnoreCase(command)) {
                 saveCommandHandler(chain);
             }
-        }
-    }
-
-    private String consoleInput(String prompt) {
-
-        try {
-
-            String line;
-
-            final Console console = System.console();
-            if (console != null) {
-                System.out.print(prompt + ": ");
-                System.out.flush();
-                line = console.readLine();
-            } else {
-                System.out.print(prompt + ": ");
-                System.out.flush();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-                    line = reader.readLine();
-                } catch (IOException e) {
-                    throw new RuntimeException("Unable to read input from console.", e);
-                }
-            }
-
-            return Strings.nullToEmpty(line).trim();
-
-        } catch (Throwable t) {
-            throw new RuntimeException("Unable to get console input.", t);
         }
     }
 
@@ -200,7 +171,7 @@ public class SancusCli implements CertificateChain.Callback {
         System.out.println(a);
         System.out.println();
 
-        String option = consoleInput("Option");
+        String option = Util.consoleInput("Option");
         if ("1".equalsIgnoreCase(option)) {
 
             KeyStore defaultKeyStore = Util.loadKeyStore(resolveDefaultJksPath(), "changeit");
@@ -221,7 +192,7 @@ public class SancusCli implements CertificateChain.Callback {
         } else if ("4".equalsIgnoreCase(option)) {
 
             System.out.println();
-            String dir = consoleInput("Path");
+            String dir = Util.consoleInput("Path");
             System.out.println();
 
             Path path = Paths.get(dir);

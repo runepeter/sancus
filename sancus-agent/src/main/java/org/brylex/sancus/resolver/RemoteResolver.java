@@ -21,7 +21,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
-import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
@@ -31,40 +30,9 @@ import java.util.Collection;
  */
 public class RemoteResolver implements CertificateChain.Resolver {
 
-    private static X509Certificate downloadX509Certificate(URL url) {
+    final JcaX509CertificateConverter converter = new JcaX509CertificateConverter().setProvider(BouncyCastleProvider.PROVIDER_NAME);
 
-        final JcaX509CertificateConverter converter = new JcaX509CertificateConverter().setProvider(BouncyCastleProvider.PROVIDER_NAME);
-
-        byte [] bytes;
-        try (InputStream is = url.openStream()) {
-            bytes = ByteStreams.toByteArray(is);
-        } catch (IOException e) {
-            throw new RuntimeException("Unable to download remote certificare stream.", e);
-        }
-
-        try (InputStream is = new ByteArrayInputStream(bytes)) {
-
-            CMSSignedData sd = new CMSSignedData(is);
-            Store certificates = sd.getCertificates();
-
-            Collection matches = certificates.getMatches(null);
-            for (Object match : matches) {
-                X509CertificateHolder holder = (X509CertificateHolder) match;
-                return converter.getCertificate(holder);
-            }
-
-        } catch (CMSException e) {
-
-            return loadCertificate(bytes);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Certificate could not be downloaded.", e);
-        }
-
-        throw new RuntimeException("Certificate not found.");
-    }
-
-    private static X509Certificate loadCertificate(byte [] bytes) {
+    private static X509Certificate loadCertificate(byte[] bytes) {
         try (InputStream is = new ByteArrayInputStream(bytes)) {
             CertificateFactory factory = CertificateFactory.getInstance("X.509");
             return (X509Certificate) factory.generateCertificate(is);
@@ -113,6 +81,40 @@ public class RemoteResolver implements CertificateChain.Resolver {
         }
     }
 
+    byte[] downloadX509CertificateBytes(URL url) {
+        try (InputStream is = url.openStream()) {
+            return ByteStreams.toByteArray(is);
+        } catch (IOException e) {
+            throw new RuntimeException("Unable to download remote certificate bytes.", e);
+        }
+    }
+
+    X509Certificate downloadX509Certificate(URL url) {
+
+        byte[] bytes = downloadX509CertificateBytes(url);
+
+        try (InputStream is = new ByteArrayInputStream(bytes)) {
+
+            CMSSignedData sd = new CMSSignedData(is);
+            Store certificates = sd.getCertificates();
+
+            Collection matches = certificates.getMatches(null);
+            for (Object match : matches) {
+                X509CertificateHolder holder = (X509CertificateHolder) match;
+                return converter.getCertificate(holder);
+            }
+
+        } catch (CMSException e) {
+
+            return loadCertificate(bytes);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Certificate could not be downloaded.", e);
+        }
+
+        throw new RuntimeException("Certificate not found.");
+    }
+
     @Override
     public CertificateChain resolve(CertificateChain chain) {
 
@@ -149,7 +151,8 @@ public class RemoteResolver implements CertificateChain.Resolver {
             URL url = getIssuerCaUrl(entry.certificate());
 
             if (url == null) {
-                System.out.println("Unable to resolve issuer certification remote download location.\n");
+                System.out.println("There's no remote download location for [" + issuer.dn() + "].\n");
+                entry.last(issuer);
                 return entry;
             }
 

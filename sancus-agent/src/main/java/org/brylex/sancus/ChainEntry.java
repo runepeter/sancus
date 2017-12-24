@@ -18,6 +18,7 @@ public class ChainEntry {
     private ChainEntry issuer;
     private String resolvedBy = "DEFAULT";
     private String trustedBy = "NOT";
+
     ChainEntry(X509Certificate certificate, CertificateChain chain) {
         this.chain = chain;
         this.certificate = certificate;
@@ -82,9 +83,11 @@ public class ChainEntry {
         if (Util.equals(certificate.getSubjectDN(), certificate.getIssuerDN())) {
             this.chain.last(this);
         } else {
+            this.chain.last(this);
             issuedBy(certificate.getIssuerDN());
         }
 
+        // TODO hva er dette??
         try {
             chain.jks().setCertificateEntry(resolverId + "_" + UUID.randomUUID().toString(), certificate);
         } catch (KeyStoreException e) {
@@ -93,6 +96,11 @@ public class ChainEntry {
 
         return this;
     }
+
+    public void last(ChainEntry entry) {
+        this.chain.last(entry);
+    }
+
 
     public void visit(Visitor visitor) {
         visitor.visit(this);

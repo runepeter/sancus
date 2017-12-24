@@ -8,8 +8,7 @@ import org.fusesource.jansi.Ansi;
 import javax.naming.InvalidNameException;
 import javax.naming.ldap.LdapName;
 import javax.naming.ldap.Rdn;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -89,5 +88,33 @@ public class Util {
             }
         });
         System.out.println();
+    }
+
+    public static String consoleInput(String prompt) {
+
+        try {
+
+            String line;
+
+            final Console console = System.console();
+            if (console != null) {
+                System.out.print(prompt + ": ");
+                System.out.flush();
+                line = console.readLine();
+            } else {
+                System.out.print(prompt + ": ");
+                System.out.flush();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+                    line = reader.readLine();
+                } catch (IOException e) {
+                    throw new RuntimeException("Unable to read input from console.", e);
+                }
+            }
+
+            return Strings.nullToEmpty(line).trim();
+
+        } catch (Throwable t) {
+            throw new RuntimeException("Unable to get console input.", t);
+        }
     }
 }

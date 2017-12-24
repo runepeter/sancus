@@ -44,7 +44,9 @@ public class KeyStoreResolver implements CertificateChain.Resolver {
     @Override
     public CertificateChain resolve(CertificateChain chain) {
 
-        resolve(chain.issuedBy());
+        if (chain.issuedBy() != null) {
+            resolve(chain.issuedBy());
+        }
 
         return chain;
     }
@@ -71,7 +73,11 @@ public class KeyStoreResolver implements CertificateChain.Resolver {
         }
 
         if (Util.equals(entry.certificate().getSubjectDN(), entry.certificate().getIssuerDN())) {
-            entry.resolvedBy(name);
+
+            if (entry.resolvedBy() == null) {
+                entry.resolvedBy(name);
+            }
+
             return entry;
         }
 

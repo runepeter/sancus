@@ -1,24 +1,35 @@
 package org.brylex.sancus.resolver;
 
+import com.google.common.io.ByteStreams;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.CertificateChainTest;
 import org.brylex.sancus.ChainEntry;
 import org.brylex.sancus.util.Certificates;
+import org.brylex.sancus.util.Util;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.*;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.Security;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.UUID;
+
+import static org.hamcrest.core.IsEqual.equalTo;
+import static org.hamcrest.core.IsNull.notNullValue;
+import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.*;
 
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 15/08/2017.
@@ -44,35 +55,51 @@ public class RemoteResolverTest {
     }
 
     @Test
-    public void name() throws Exception {
+    public void diggerDettePkcs7Issuer() throws Exception {
 
         final CertificateChain chain = CertificateChain.create(DIGGERDETTE, LETSENCRYPT);
 
-        CertificateChain resolved = new RemoteResolver().resolve(chain);
-        System.out.println(resolved);
+        final RemoteResolver resolver = new RemoteResolver() {
+            @Override
+            byte[] downloadX509CertificateBytes(URL url) {
+                return downloadBytes("/dstrootcax3.p7c");
+            }
+        };
 
-        new JksBuilder(Paths.get("target/jalla.jks")).build(resolved);
 
+        CertificateChain resolved = resolver.resolve(chain);
+        assertThat(resolved, notNullValue());
+        assertTrue(resolved.isComplete());
+        assertThat(resolved.last().dn().getName(), containsString("CN=DST Root CA X3"));
     }
 
     @Test
-    public void aws() throws Exception {
-
-        /*
-        [SERVER ][U] CN=aws.amazon.com
-[SERVER ][U] CN=Amazon, OU=Server CA 1B, O=Amazon, C=US
-[SERVER ][U] CN=Amazon Root CA 1, O=Amazon, C=US
-[SERVER ][U] CN=Starfield Services Root Certificate Authority - G2, O="Starfield Technologies, Inc.", L=Scottsdale, ST=Arizona, C=US
-[MISSING][U] OU=Starfield Class 2 Certification Authority, O="Starfield Technologies, Inc.", C=US
-         */
+    public void AWSx509IssuerAndMissingRoot() throws Exception {
 
         final CertificateChain chain = CertificateChain.create(Certificates.AWS_AMAZON, Certificates.AMAZON_CA, Certificates.AMAZON_ROOT, Certificates.STARFIELD_G2);
 
-        CertificateChain resolved = new RemoteResolver().resolve(chain);
-        System.out.println(resolved);
+        RemoteResolver resolver = new RemoteResolver() {
+            @Override
+            byte[] downloadX509CertificateBytes(URL url) {
+                return downloadBytes("/starfield.class.2.pem");
+            }
+        };
 
-        new JksBuilder(Paths.get("target/jalla.jks")).build(resolved);
+        CertificateChain resolved = resolver.resolve(chain);
+        Util.printChain(resolved);
 
+        assertThat(resolved, notNullValue());
+        assertFalse(resolved.isComplete());
+        assertThat(resolved.last().dn().getName(), containsString("OU=ValiCert Class 2 Policy Validation Authority,"));
+        assertThat(resolved.last().resolvedBy(), equalTo("MISSING")); // is not remotely resolvable
+    }
+
+    private byte[] downloadBytes(String path) {
+        try (InputStream is = CertificateChainTest.class.getResourceAsStream(path)) {
+            return ByteStreams.toByteArray(is);
+        } catch (IOException e) {
+            throw new RuntimeException("Test failure - unable to load PEM from filesystem.", e);
+        }
     }
 
     public static class JksBuilder {

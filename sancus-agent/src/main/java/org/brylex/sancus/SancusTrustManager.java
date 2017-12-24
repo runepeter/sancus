@@ -32,7 +32,11 @@ public class SancusTrustManager implements X509TrustManager {
 
         certificateChain.apply(chain);
 
+        Util.printChain(certificateChain);
+
         new KeyStoreResolver("JKS", certificateChain.jks()).resolve(certificateChain);
+
+        Util.printChain(certificateChain);
 
         certificateChain.visit(new TrustMarkerVisitor(certificateChain.jks()));
 

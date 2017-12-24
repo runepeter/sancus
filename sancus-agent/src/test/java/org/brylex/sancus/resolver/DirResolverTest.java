@@ -3,6 +3,7 @@ package org.brylex.sancus.resolver;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.CertificateChainTest;
 import org.brylex.sancus.util.Certificates;
+import org.brylex.sancus.util.Util;
 import org.junit.Test;
 
 import java.io.InputStream;
@@ -46,21 +47,22 @@ public class DirResolverTest {
     }
 
     @Test
-    public void partialResolve() throws Exception {
+    public void fullyResolve1() throws Exception {
 
         final Path dir = Paths.get("src/test/resources/");
 
         final CertificateChain chain = CertificateChain.create(DIGGERDETTE);
 
         new DirResolver(dir).resolve(chain);
+        Util.printChain(chain);
 
         List<X509Certificate> certificates = chain.toList();
-        assertThat(certificates.size(), equalTo(2));
-        assertFalse(chain.isComplete());
+        assertThat(certificates.size(), equalTo(3));
+        assertTrue(chain.isComplete());
     }
 
     @Test
-    public void fullyResolve() throws Exception {
+    public void fullyResolve2() throws Exception {
 
         final Path dir = Paths.get("src/test/resources/");
 

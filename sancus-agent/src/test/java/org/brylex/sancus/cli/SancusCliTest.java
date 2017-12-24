@@ -7,7 +7,7 @@ public class SancusCliTest {
     public static void main(String[] args) throws InterruptedException {
 
         String[] a = {
-            "-host", "aws.amazon.com"
+            "-h", "10.40.3.187", "-port", "7443", "-truststore", "src/test/resources/jks/selfsigned.jks"
         };
 
         SancusCli.main(a);
