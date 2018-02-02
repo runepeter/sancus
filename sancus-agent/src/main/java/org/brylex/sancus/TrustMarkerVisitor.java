@@ -31,7 +31,7 @@ public class TrustMarkerVisitor implements ChainEntry.Visitor {
 
         for (X509Certificate issuer : tm.getAcceptedIssuers()) {
             if (Util.equals(issuer.getSubjectDN(), entry.dn())) {
-                entry.trustedBy("TRUSTER");
+                entry.trustedBy("JKS");
             }
         }
 

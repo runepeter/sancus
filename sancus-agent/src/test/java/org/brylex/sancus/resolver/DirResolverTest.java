@@ -17,6 +17,8 @@ import static org.brylex.sancus.util.Certificates.AWS_AMAZON;
 import static org.brylex.sancus.util.Certificates.DIGGERDETTE;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsEqual.equalTo;
+import static org.hamcrest.core.IsNull.notNullValue;
+import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.*;
 
 /**
@@ -56,9 +58,10 @@ public class DirResolverTest {
         new DirResolver(dir).resolve(chain);
         Util.printChain(chain);
 
-        List<X509Certificate> certificates = chain.toList();
-        assertThat(certificates.size(), equalTo(3));
         assertTrue(chain.isComplete());
+        assertThat(chain.last().certificate(), notNullValue());
+        assertThat(chain.last().dn().getName(), containsString("DST Root CA X3"));
+        assertThat(chain.toList().size(), equalTo(3));
     }
 
     @Test
@@ -69,10 +72,9 @@ public class DirResolverTest {
         final CertificateChain chain = CertificateChain.create(AWS_AMAZON);
 
         new DirResolver(dir).resolve(chain);
-
-        List<X509Certificate> certificates = chain.toList();
-        assertThat(certificates.size(), equalTo(6));
-        assertThat(chain.last().certificate(), is(Certificates.VALICERT_CLASS2));
+        Util.printChain(chain);
         assertTrue(chain.isComplete());
+        assertThat(chain.last().certificate(), is(Certificates.VALICERT_CLASS2));
+        assertThat(chain.toList().size(), equalTo(6));
     }
 }

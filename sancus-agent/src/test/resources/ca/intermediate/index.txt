@@ -1,0 +1,7 @@
+R	190103120449Z	180125211719Z	1000	unknown	/C=NO/ST=Norway/L=Oslo/O=Brylex Org./OU=Development/CN=127.0.0.1/emailAddress=runepeter@gmail.com
+R	190204205727Z	180125210210Z	1001	unknown	/C=NO/ST=Norway/L=Oslo/O=Brylex Org./OU=Development/CN=localhost/emailAddress=runepeter@gmail.com
+V	190204210323Z		1002	unknown	/C=NO/ST=Norway/L=Oslo/O=Brylex Org./OU=Development/CN=localhost/emailAddress=runepeter@gmail.com
+R	190204211844Z	180126184347Z	1003	unknown	/C=NO/ST=Norway/L=Oslo/O=Brylex Org./OU=Development/CN=127.0.0.1/emailAddress=runepeter@gmail.com
+R	190205185109Z	180126185458Z	1004	unknown	/C=NO/ST=Norway/L=Oslo/O=Brylex Org./OU=Development/CN=127.0.0.1/emailAddress=runepeter@gmail.com
+R	190205185533Z	180126185559Z	1005	unknown	/C=NO/ST=Norway/L=Oslo/O=Brylex Org./OU=Development/CN=127.0.0.1/emailAddress=runepeter@gmail.com
+V	190205185628Z		1006	unknown	/C=NO/ST=Norway/L=Oslo/O=Brylex Org./OU=Development/CN=127.0.0.1/emailAddress=runepeter@gmail.com

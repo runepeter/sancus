@@ -105,18 +105,6 @@ public class CertificateChainTest {
         //assertThat(chain.last().resolvedBy(), equalTo("JALLA"));
     }
 
-    @Test
-    public void jalla() throws Exception {
-
-        final CertificateChain chain = CertificateChain.create(DIGGERDETTE, LETSENCRYPT);
-        System.out.println(chain);
-        System.out.println("===================================================================================================");
-
-        new RemoteResolver().resolve(chain);
-
-        System.out.println(chain);
-    }
-
     private KeyStoreResolver resolver() throws Exception {
         return resolver(null);
     }

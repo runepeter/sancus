@@ -25,6 +25,8 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
 
+import static org.fusesource.jansi.Ansi.ansi;
+
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 13/04/2017.
  */
@@ -44,6 +46,9 @@ public class RemoteResolver implements CertificateChain.Resolver {
     private static URL getIssuerCaUrl(X509Certificate certificate) {
 
         byte[] octetBytes = certificate.getExtensionValue(Extension.authorityInfoAccess.getId());
+        if (octetBytes == null) {
+            return null;
+        }
 
         DLSequence dlSequence = null;
         ASN1Encodable asn1Encodable = null;
@@ -122,6 +127,13 @@ public class RemoteResolver implements CertificateChain.Resolver {
         if (issuer.certificate() == null) {
             URL url = getIssuerCaUrl(chain.head().certificate());
             System.out.println("URL 1: " + url);
+
+            if (url != null) {
+                System.out.println(ansi().a("Downloading issuer [").fgBlue().a(issuer.dn()).reset().a("] certificate from [").fgBrightYellow().a(url).reset().a("]\n"));
+                X509Certificate certificate = downloadX509Certificate(url);
+                issuer.apply(certificate, "REMOTE");
+            }
+
         }
 
         resolve(issuer);
@@ -133,9 +145,7 @@ public class RemoteResolver implements CertificateChain.Resolver {
 
         if (entry.certificate() == null) {
             System.out.println("UNRESOLVABLE? " + entry.dn());
-        }
-
-        if (entry.certificate().getSubjectDN().equals(entry.certificate().getIssuerDN())) {
+        } else if (entry.certificate().getSubjectDN().equals(entry.certificate().getIssuerDN())) {
             return entry;
         }
 
@@ -151,12 +161,12 @@ public class RemoteResolver implements CertificateChain.Resolver {
             URL url = getIssuerCaUrl(entry.certificate());
 
             if (url == null) {
-                System.out.println("There's no remote download location for [" + issuer.dn() + "].\n");
+                System.out.println(ansi().a("There's no remote download location for [").fgBlue().a(issuer.dn()).reset().a("].\n"));
                 entry.last(issuer);
                 return entry;
             }
 
-            System.out.println("\nDownloading issuer certificate from [" + url + "]\n");
+            System.out.println(ansi().a("Downloading issuer [").fgBlue().a(entry.issuedBy().dn()).reset().a("] certificate from [").fgBrightYellow().a(url).reset().a("]\n"));
             X509Certificate certificate = downloadX509Certificate(url);
             issuer.apply(certificate, "REMOTE");
         }

@@ -12,6 +12,7 @@ import org.fusesource.jansi.AnsiConsole;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
+import org.kohsuke.args4j.spi.OptionHandler;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -23,6 +24,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.Security;
+import java.util.List;
 import java.util.concurrent.TimeoutException;
 
 import static org.fusesource.jansi.Ansi.Color.BLUE;
@@ -39,15 +41,20 @@ public class SancusCli implements CertificateChain.Callback {
 
     @Option(name = "--host", aliases = "-h", usage = "Hostname to connect to", forbids = "--cert")
     public String host;
-    @Option(name = "-port", usage = "Port to connect to")
+
+    @Option(name = "--port", aliases = "-p", usage = "Port to connect to")
     public int port = 443;
+
     @Option(name = "--cert", aliases = "-c", usage = "Certificate to trust", forbids = "--host")
     public Path certificate;
-    @Option(name = "-truststore", usage = "Truststore to validate against")
+
+    @Option(name = "--truststore", aliases = "-t", usage = "Truststore to validate against")
     public Path trustStore;
-    @Option(name = "-truststorepwd", usage = "Truststore password")
+
+    @Option(name = "--truststorepwd", aliases = "-k", usage = "Truststore password")
     public String trustStorePassword = "changeit";
-    @Option(name = "-i", usage = "Interactive mode")
+
+    @Option(name = "--interactive", aliases = "-i", usage = "Interactive mode")
     public boolean interactiveMode = false;
 
     public static void main(String[] args) throws InterruptedException {
@@ -56,8 +63,11 @@ public class SancusCli implements CertificateChain.Callback {
 
         CmdLineParser parser = new CmdLineParser(cli);
         try {
+
             parser.parseArgument(args);
+
         } catch (CmdLineException e) {
+
             parser.printUsage(System.err);
             System.exit(-1);
         }
@@ -70,7 +80,6 @@ public class SancusCli implements CertificateChain.Callback {
     private void doIt() {
 
         CertificateChain chain = resolveCertificateChain();
-        Util.printChain(chain);
 
         String command;
 
@@ -106,17 +115,22 @@ public class SancusCli implements CertificateChain.Callback {
             throw new RuntimeException("Unable to inspect KeyStore.", e);
         }
 
-        try (OutputStream os = Files.newOutputStream(trustStore, StandardOpenOption.CREATE)) {
+        String dir = Util.consoleInput("Path [" + (trustStore != null ? trustStore.toAbsolutePath() : "")+ "]");
+        System.out.println();
+
+        Path path = "".equals(dir) ? trustStore : Paths.get(dir);
+
+        try (OutputStream os = Files.newOutputStream(path, StandardOpenOption.CREATE)) {
 
             if (chain.jks().containsAlias("dummy-sancus")) {
                 chain.jks().deleteEntry("dummy-sancus");
             }
 
             chain.jks().store(os, trustStorePassword.toCharArray());
-            System.out.println("Successfully saved KeyStore at [" + trustStore.toAbsolutePath() + "].\n");
+            System.out.println("Successfully saved KeyStore at [" + path.toAbsolutePath() + "].\n");
 
         } catch (Exception e) {
-            throw new RuntimeException("Unable to save KeyStore at [" + trustStore.toAbsolutePath() + "].", e);
+            throw new RuntimeException("Unable to save KeyStore at [" + path.toAbsolutePath() + "].", e);
         }
     }
 

@@ -6,14 +6,8 @@ import org.fusesource.jansi.Ansi;
 
 import javax.net.ssl.*;
 import java.net.UnknownHostException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.security.KeyStore;
 import java.util.concurrent.TimeoutException;
 
-import static org.fusesource.jansi.Ansi.Color.BLUE;
 import static org.fusesource.jansi.Ansi.ansi;
 
 /**
@@ -36,7 +30,7 @@ public class HandshakeResolver implements CertificateChain.Resolver {
 
     private CertificateChain resolveCertificateChain(CertificateChain chain) {
 
-        System.out.println("\nPerforming SSL Handshake with [" + host + ":" + port + "] ...");
+        System.out.println(ansi().a("\nPerforming SSL Handshake with [").fgBrightGreen().a(host).reset().a(":").fgBlue().a(port).reset().a("] ...\n"));
 
         try {
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
@@ -45,7 +39,7 @@ public class HandshakeResolver implements CertificateChain.Resolver {
             TrustManager[] defaultTrustManagers = tmf.getTrustManagers();
 
             SancusTrustManager[] trustManagers = new SancusTrustManager[defaultTrustManagers.length];
-            for (int i=0;i<defaultTrustManagers.length;i++) {
+            for (int i = 0; i < defaultTrustManagers.length; i++) {
                 trustManagers[i] = new SancusTrustManager(chain, (X509TrustManager) defaultTrustManagers[i]);
             }
 
@@ -77,40 +71,6 @@ public class HandshakeResolver implements CertificateChain.Resolver {
         System.out.println();
 
         return chain;
-    }
-
-    private Path resolveJksPath() {
-
-        return Paths.get("target/jalla.jks");
-
-        /*if (trustStore == null) {
-            return resolveDefaultJksPath();
-        }
-
-        System.out.println(ansi().a("Verifying trust using ").fg(BLUE).a("JKS").reset().a(" [").bold().a(trustStore.toAbsolutePath()).boldOff().a("]."));
-        System.out.println();
-
-        return trustStore;*/
-    }
-
-    private Path resolveDefaultJksPath() {
-
-        Path path = getEffectiveDefaultJksPath();
-
-        System.out.println(ansi().a("Verifying trust using ").fg(BLUE).a("DEFAULT").reset().a(" [").bold().a(path.toAbsolutePath()).boldOff().a("]."));
-        System.out.println();
-
-        return path;
-    }
-
-    private Path getEffectiveDefaultJksPath() {
-        String javaHome = System.getProperty("java.home");
-
-        Path path = Paths.get(javaHome, "lib/security/jssecacerts");
-        if (!path.toFile().exists()) {
-            path = Paths.get(javaHome, "lib/security/cacerts");
-        }
-        return path;
     }
 
 }

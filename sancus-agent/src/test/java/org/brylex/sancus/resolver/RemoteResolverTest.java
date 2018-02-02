@@ -6,6 +6,7 @@ import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.CertificateChainTest;
 import org.brylex.sancus.ChainEntry;
 import org.brylex.sancus.util.Certificates;
+import org.brylex.sancus.util.TestServer;
 import org.brylex.sancus.util.Util;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -28,6 +29,7 @@ import java.util.UUID;
 
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
+import static org.hamcrest.core.IsNull.nullValue;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.*;
 
@@ -38,7 +40,7 @@ public class RemoteResolverTest {
 
     public static final X509Certificate DIGGERDETTE = loadCertificate("/diggerdette.no.pem");
     public static final X509Certificate LETSENCRYPT = loadCertificate("/letsencrypt.org.pem");
-
+    public static final X509Certificate LOCALHOST = loadCertificate("/ca/intermediate/certs/127.0.0.1.cert.pem");
 
     @BeforeClass
     public static void setUpClass() throws Exception {
@@ -52,6 +54,23 @@ public class RemoteResolverTest {
         } catch (Exception e) {
             throw new RuntimeException("Unable to load certificate from classpath resources [" + path + "].", e);
         }
+    }
+
+    @Test
+    public void resolveIntermediateViaAccessInfoExtension() throws Exception {
+
+        try (TestServer server = new TestServer()) {
+
+            RemoteResolver resolver = new RemoteResolver();
+
+            final CertificateChain chain = resolver.resolve(CertificateChain.create(LOCALHOST));
+            assertThat(chain, notNullValue());
+            assertFalse(chain.isComplete());
+            assertThat(chain.last().dn().getName(), containsString("Brylex Development Root CA"));
+            assertThat(chain.last().resolvedBy(), equalTo("MISSING"));
+            assertThat(chain.last().certificate(), nullValue());
+        }
+
     }
 
     @Test

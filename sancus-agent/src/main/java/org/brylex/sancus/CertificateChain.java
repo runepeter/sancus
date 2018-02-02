@@ -79,7 +79,11 @@ public class CertificateChain {
             entry = entry.issuedBy(next);
         }
 
-        this.last = entry;
+        if (entry.issuedBy() == null) {
+            this.last = entry;
+        } else {
+            this.last = entry.issuedBy();
+        }
 
         return this;
     }
