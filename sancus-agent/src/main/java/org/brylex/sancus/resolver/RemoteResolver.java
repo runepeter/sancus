@@ -1,9 +1,9 @@
 package org.brylex.sancus.resolver;
 
-import com.google.common.io.ByteStreams;
 import org.bouncycastle.asn1.ASN1Encodable;
+import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Primitive;
-import org.bouncycastle.asn1.DERTaggedObject;
+import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.DLSequence;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.X509ObjectIdentifiers;
@@ -13,7 +13,6 @@ import org.bouncycastle.cms.CMSException;
 import org.bouncycastle.cms.CMSSignedData;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.Store;
-import org.bouncycastle.x509.extension.X509ExtensionUtil;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
 
@@ -54,7 +53,8 @@ public class RemoteResolver implements CertificateChain.Resolver {
         ASN1Encodable asn1Encodable = null;
 
         try {
-            ASN1Primitive fromExtensionValue = X509ExtensionUtil.fromExtensionValue(octetBytes);
+            ASN1OctetString octs = ASN1OctetString.getInstance(octetBytes);
+            ASN1Primitive fromExtensionValue = ASN1Primitive.fromByteArray(octs.getOctets());
             if (!(fromExtensionValue instanceof DLSequence)) {
                 return null;
             }
@@ -68,10 +68,10 @@ public class RemoteResolver implements CertificateChain.Resolver {
                     if (keyValue.getObjectAt(0).equals(X509ObjectIdentifiers.id_ad_caIssuers)) {
 
                         ASN1Encodable value = keyValue.getObjectAt(1);
-                        DERTaggedObject derTaggedObject = (DERTaggedObject) value;
+                        ASN1TaggedObject taggedObject = (ASN1TaggedObject) value;
 
-                        byte[] encoded = derTaggedObject.getEncoded();
-                        if (derTaggedObject.getTagNo() == 6) {
+                        byte[] encoded = taggedObject.getEncoded();
+                        if (taggedObject.getTagNo() == 6) {
                             int len = encoded[1];
                             return new URL(new String(encoded, 2, len));
                         }
@@ -88,7 +88,7 @@ public class RemoteResolver implements CertificateChain.Resolver {
 
     byte[] downloadX509CertificateBytes(URL url) {
         try (InputStream is = url.openStream()) {
-            return ByteStreams.toByteArray(is);
+            return is.readAllBytes();
         } catch (IOException e) {
             throw new RuntimeException("Unable to download remote certificate bytes.", e);
         }

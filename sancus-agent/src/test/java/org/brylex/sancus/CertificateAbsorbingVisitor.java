@@ -1,12 +1,11 @@
 package org.brylex.sancus;
 
-import com.google.common.collect.Sets;
-
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.Principal;
 import java.security.cert.X509Certificate;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -20,7 +19,7 @@ public class CertificateAbsorbingVisitor implements ChainEntry.Visitor {
 
     public CertificateAbsorbingVisitor(KeyStore jks) {
         this.jks = jks;
-        set = Sets.newHashSet();
+        set = new HashSet<>();
         try {
 
             Enumeration<String> aliases = jks.aliases();

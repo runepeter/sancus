@@ -1,6 +1,5 @@
 package org.brylex.sancus.resolver;
 
-import com.google.common.io.ByteStreams;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.CertificateChainTest;
@@ -8,8 +7,8 @@ import org.brylex.sancus.ChainEntry;
 import org.brylex.sancus.util.Certificates;
 import org.brylex.sancus.util.TestServer;
 import org.brylex.sancus.util.Util;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
@@ -27,11 +26,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.UUID;
 
-import static org.hamcrest.core.IsEqual.equalTo;
-import static org.hamcrest.core.IsNull.notNullValue;
-import static org.hamcrest.core.IsNull.nullValue;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 15/08/2017.
@@ -42,8 +37,8 @@ public class RemoteResolverTest {
     public static final X509Certificate LETSENCRYPT = loadCertificate("/letsencrypt.org.pem");
     public static final X509Certificate LOCALHOST = loadCertificate("/ca/intermediate/certs/127.0.0.1.cert.pem");
 
-    @BeforeClass
-    public static void setUpClass() throws Exception {
+    @BeforeAll
+    static void setUpClass() {
         Security.addProvider(new BouncyCastleProvider());
     }
 
@@ -64,11 +59,11 @@ public class RemoteResolverTest {
             RemoteResolver resolver = new RemoteResolver();
 
             final CertificateChain chain = resolver.resolve(CertificateChain.create(LOCALHOST));
-            assertThat(chain, notNullValue());
+            assertNotNull(chain);
             assertFalse(chain.isComplete());
-            assertThat(chain.last().dn().getName(), containsString("Brylex Development Root CA"));
-            assertThat(chain.last().resolvedBy(), equalTo("MISSING"));
-            assertThat(chain.last().certificate(), nullValue());
+            assertTrue(chain.last().dn().getName().contains("Brylex Development Root CA"));
+            assertEquals("MISSING", chain.last().resolvedBy());
+            assertNull(chain.last().certificate());
         }
 
     }
@@ -87,9 +82,9 @@ public class RemoteResolverTest {
 
 
         CertificateChain resolved = resolver.resolve(chain);
-        assertThat(resolved, notNullValue());
+        assertNotNull(resolved);
         assertTrue(resolved.isComplete());
-        assertThat(resolved.last().dn().getName(), containsString("CN=DST Root CA X3"));
+        assertTrue(resolved.last().dn().getName().contains("CN=DST Root CA X3"));
     }
 
     @Test
@@ -107,15 +102,15 @@ public class RemoteResolverTest {
         CertificateChain resolved = resolver.resolve(chain);
         Util.printChain(resolved);
 
-        assertThat(resolved, notNullValue());
+        assertNotNull(resolved);
         assertFalse(resolved.isComplete());
-        assertThat(resolved.last().dn().getName(), containsString("OU=ValiCert Class 2 Policy Validation Authority,"));
-        assertThat(resolved.last().resolvedBy(), equalTo("MISSING")); // is not remotely resolvable
+        assertTrue(resolved.last().dn().getName().contains("OU=ValiCert Class 2 Policy Validation Authority,"));
+        assertEquals("MISSING", resolved.last().resolvedBy()); // is not remotely resolvable
     }
 
     private byte[] downloadBytes(String path) {
         try (InputStream is = CertificateChainTest.class.getResourceAsStream(path)) {
-            return ByteStreams.toByteArray(is);
+            return is.readAllBytes();
         } catch (IOException e) {
             throw new RuntimeException("Test failure - unable to load PEM from filesystem.", e);
         }

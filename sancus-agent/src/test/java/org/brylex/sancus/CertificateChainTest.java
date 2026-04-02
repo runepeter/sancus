@@ -3,7 +3,7 @@ package org.brylex.sancus;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.brylex.sancus.resolver.KeyStoreResolver;
 import org.brylex.sancus.resolver.RemoteResolver;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -13,8 +13,7 @@ import java.security.Security;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
-import static org.hamcrest.core.IsEqual.equalTo;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 12/04/2017.
@@ -60,18 +59,18 @@ public class CertificateChainTest {
         }
     }
 
-    @Test(expected = IllegalArgumentException.class)
-    public void emptyCertificateChain() throws Exception {
-        CertificateChain.create();
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void emptyNullCertificateChain() throws Exception {
-        CertificateChain.create((X509Certificate[]) null);
+    @Test
+    void emptyCertificateChain() {
+        assertThrows(IllegalArgumentException.class, () -> CertificateChain.create());
     }
 
     @Test
-    public void name() throws Exception {
+    void emptyNullCertificateChain() {
+        assertThrows(IllegalArgumentException.class, () -> CertificateChain.create((X509Certificate[]) null));
+    }
+
+    @Test
+    void name() throws Exception {
 
         final CertificateChain chain = CertificateChain.create(CERT_GMAIL);
         assertNotNull(chain);
@@ -79,7 +78,7 @@ public class CertificateChainTest {
         assertFalse(chain.isComplete());
 
         Principal issuerDn = CERT_GOOGLE_G2.getSubjectDN();
-        assertThat(chain.issuedBy().dn(), equalTo(issuerDn));
+        assertEquals(issuerDn, chain.issuedBy().dn());
         assertNull(chain.issuedBy().certificate());
     }
 

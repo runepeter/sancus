@@ -5,7 +5,7 @@ import org.brylex.sancus.TrustMarkerVisitor;
 import org.brylex.sancus.util.Certificates;
 import org.brylex.sancus.util.UserInput;
 import org.brylex.sancus.util.Util;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.nio.file.Paths;
 import java.security.KeyStore;

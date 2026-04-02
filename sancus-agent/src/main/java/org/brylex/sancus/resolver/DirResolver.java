@@ -1,6 +1,5 @@
 package org.brylex.sancus.resolver;
 
-import com.google.common.collect.Maps;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
 
@@ -10,9 +9,8 @@ import java.nio.file.Path;
 import java.security.Principal;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
 import java.util.Map;
-
-import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 21/05/2017.
@@ -23,7 +21,9 @@ public class DirResolver implements CertificateChain.Resolver {
 
     public DirResolver(Path dir) {
 
-        checkArgument(dir != null, "Cannot specify NULL certificate directory.");
+        if (dir == null) {
+            throw new IllegalArgumentException("Cannot specify NULL certificate directory.");
+        }
 
         this.dir = dir;
     }
@@ -31,9 +31,11 @@ public class DirResolver implements CertificateChain.Resolver {
     @Override
     public CertificateChain resolve(CertificateChain chain) {
 
-        checkArgument(chain != null, "Cannot resolve NULL certificate chain.");
+        if (chain == null) {
+            throw new IllegalArgumentException("Cannot resolve NULL certificate chain.");
+        }
 
-        final Map<Principal, X509Certificate> map = Maps.newHashMap();
+        final Map<Principal, X509Certificate> map = new HashMap<>();
 
         try {
             final CertificateFactory factory = CertificateFactory.getInstance("X.509");

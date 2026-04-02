@@ -1,6 +1,5 @@
 package org.brylex.sancus.cli.command;
 
-import com.google.common.collect.Lists;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
 import org.brylex.sancus.TrustMarkerVisitor;
@@ -10,6 +9,7 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.fusesource.jansi.Ansi.ansi;
@@ -29,7 +29,7 @@ public class SaveCommandHandler {
 
         chain.visit(new TrustMarkerVisitor(jks));
 
-        final List<ChainEntry> entryList = Lists.newArrayList();
+        final List<ChainEntry> entryList = new ArrayList<>();
 
         chain.visit(new ChainEntry.Visitor() {
             @Override

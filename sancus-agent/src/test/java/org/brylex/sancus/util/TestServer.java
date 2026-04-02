@@ -1,6 +1,5 @@
 package org.brylex.sancus.util;
 
-import com.google.common.io.ByteStreams;
 import com.sun.net.httpserver.*;
 
 import javax.net.ssl.*;
@@ -99,7 +98,7 @@ public class TestServer implements AutoCloseable {
             @Override
             public void handle(HttpExchange exchange) throws IOException {
 
-                byte[] bytes = ByteStreams.toByteArray(TestServer.class.getResourceAsStream("/ca/certs/ca.cert.pem"));
+                byte[] bytes = TestServer.class.getResourceAsStream("/ca/certs/ca.cert.pem").readAllBytes();
                 exchange.sendResponseHeaders(200, bytes.length);
 
                 try (OutputStream os = exchange.getResponseBody()) {
@@ -112,7 +111,7 @@ public class TestServer implements AutoCloseable {
             @Override
             public void handle(HttpExchange exchange) throws IOException {
 
-                byte[] bytes = ByteStreams.toByteArray(TestServer.class.getResourceAsStream("/ca/intermediate/certs/intermediate.cert.pem"));
+                byte[] bytes = TestServer.class.getResourceAsStream("/ca/intermediate/certs/intermediate.cert.pem").readAllBytes();
                 exchange.sendResponseHeaders(200, bytes.length);
 
                 try (OutputStream os = exchange.getResponseBody()) {

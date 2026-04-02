@@ -1,6 +1,5 @@
 package org.brylex.sancus.util;
 
-import com.google.common.base.Strings;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
 import org.fusesource.jansi.Ansi;
@@ -73,7 +72,7 @@ public class Util {
             public void visit(ChainEntry entry) {
 
                 boolean trusted = !entry.trustedBy().equals("NOT");
-                String r = Strings.padEnd(entry.resolvedBy(), 7, ' ');
+                String r = String.format("%-7s", entry.resolvedBy());
                 Ansi.Color rc = r.equals("DEFAULT") ? Ansi.Color.YELLOW : Ansi.Color.BLUE;
                 rc = r.equals("MISSING") ? RED : rc;
 
@@ -111,7 +110,7 @@ public class Util {
                 }
             }
 
-            return Strings.nullToEmpty(line).trim();
+            return (line == null ? "" : line).trim();
 
         } catch (Throwable t) {
             throw new RuntimeException("Unable to get console input.", t);

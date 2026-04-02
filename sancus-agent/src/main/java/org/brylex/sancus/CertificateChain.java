@@ -1,17 +1,15 @@
 package org.brylex.sancus;
 
-import com.google.common.collect.Lists;
 import org.brylex.sancus.resolver.HandshakeResolver;
 
 import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-
-import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 12/04/2017.
@@ -63,8 +61,9 @@ public class CertificateChain {
 
     public CertificateChain apply(X509Certificate... chain) {
 
-        checkArgument(chain != null);
-        checkArgument(chain.length > 0);
+        if (chain == null || chain.length == 0) {
+            throw new IllegalArgumentException();
+        }
 
         List<X509Certificate> list = Arrays.asList(chain);
         Collections.sort(list, new ChainComparator());
@@ -114,7 +113,7 @@ public class CertificateChain {
 
     public List<X509Certificate> toList() {
 
-        final List<X509Certificate> list = Lists.newArrayList();
+        final List<X509Certificate> list = new ArrayList<>();
 
         ChainEntry entry = head;
         while (entry != null) {
