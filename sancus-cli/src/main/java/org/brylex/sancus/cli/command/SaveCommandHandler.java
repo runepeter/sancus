@@ -4,7 +4,7 @@ import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
 import org.brylex.sancus.TrustMarkerVisitor;
 import org.brylex.sancus.TrustStatus;
-import org.brylex.sancus.util.UserInput;
+import org.brylex.sancus.cli.UserInput;
 
 import java.io.FileOutputStream;
 import java.io.OutputStream;
