@@ -2,8 +2,7 @@ package org.brylex.sancus.resolver;
 
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
-import org.brylex.sancus.util.Util;
-
+import org.brylex.sancus.ResolverSource;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
@@ -16,11 +15,11 @@ import java.security.cert.X509Certificate;
 public class KeyStoreResolver implements CertificateChain.Resolver {
 
     private final X509TrustManager[] trustManagers;
-    private final String name;
+    private final ResolverSource source;
 
-    public KeyStoreResolver(final String name, final KeyStore keyStore) {
+    public KeyStoreResolver(final ResolverSource source, final KeyStore keyStore) {
 
-        this.name = name;
+        this.source = source;
 
         try {
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
@@ -59,8 +58,8 @@ public class KeyStoreResolver implements CertificateChain.Resolver {
 
             for (X509TrustManager trustManager : trustManagers) {
                 for (X509Certificate certificate : trustManager.getAcceptedIssuers()) {
-                    if (Util.equals(entry.dn(), certificate.getSubjectDN())) {
-                        entry.apply(certificate, name);
+                    if (entry.dn().equals(certificate.getSubjectX500Principal())) {
+                        entry.apply(certificate, source);
                         applied = true;
                         break;
                     }
@@ -72,10 +71,10 @@ public class KeyStoreResolver implements CertificateChain.Resolver {
             }
         }
 
-        if (Util.equals(entry.certificate().getSubjectDN(), entry.certificate().getIssuerDN())) {
+        if (entry.certificate().getSubjectX500Principal().equals(entry.certificate().getIssuerX500Principal())) {
 
             if (entry.resolvedBy() == null) {
-                entry.resolvedBy(name);
+                entry.resolvedBy(source);
             }
 
             return entry;

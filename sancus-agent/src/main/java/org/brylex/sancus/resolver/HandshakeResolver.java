@@ -5,8 +5,8 @@ import org.brylex.sancus.SancusTrustManager;
 import org.fusesource.jansi.Ansi;
 
 import javax.net.ssl.*;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
-import java.util.concurrent.TimeoutException;
 
 import static org.fusesource.jansi.Ansi.ansi;
 
@@ -43,14 +43,14 @@ public class HandshakeResolver implements CertificateChain.Resolver {
                 trustManagers[i] = new SancusTrustManager(chain, (X509TrustManager) defaultTrustManagers[i]);
             }
 
-            SSLContext context = SSLContext.getInstance("SSL");
+            SSLContext context = SSLContext.getInstance("TLS");
             context.init(null, trustManagers, null);
 
             SSLSocketFactory factory = context.getSocketFactory();
-            SSLSocket socket = (SSLSocket) factory.createSocket(host, port);
-            socket.setSoTimeout(5000);
-            socket.startHandshake();
-            socket.close();
+            try (SSLSocket socket = (SSLSocket) factory.createSocket(host, port)) {
+                socket.setSoTimeout(5000);
+                socket.startHandshake();
+            }
 
             System.out.println(ansi().a("Status: ").fg(Ansi.Color.GREEN).a("SUCCESS").reset());
 
@@ -58,7 +58,7 @@ public class HandshakeResolver implements CertificateChain.Resolver {
 
             if (e instanceof UnknownHostException) {
                 System.out.println(ansi().a("Status: ").fg(Ansi.Color.RED).a("UNKNOWN_HOST_EXCEPTION").reset());
-            } else if (e instanceof TimeoutException) {
+            } else if (e instanceof SocketTimeoutException) {
                 System.out.println(ansi().a("Status: ").fg(Ansi.Color.RED).a("TIMEOUT_EXCEPTION").reset());
             } else if (e instanceof SSLHandshakeException) {
                 System.out.println(ansi().a("Status: ").fg(Ansi.Color.RED).a("SSL_HANDSHAKE_EXCEPTION").reset());

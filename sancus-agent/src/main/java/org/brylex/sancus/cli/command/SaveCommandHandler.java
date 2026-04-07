@@ -3,6 +3,7 @@ package org.brylex.sancus.cli.command;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
 import org.brylex.sancus.TrustMarkerVisitor;
+import org.brylex.sancus.TrustStatus;
 import org.brylex.sancus.util.UserInput;
 
 import java.io.FileOutputStream;
@@ -20,9 +21,11 @@ import static org.fusesource.jansi.Ansi.ansi;
 public class SaveCommandHandler {
 
     private final UserInput userInput;
+    private final String password;
 
-    public SaveCommandHandler(UserInput userInput) {
+    public SaveCommandHandler(UserInput userInput, String password) {
         this.userInput = userInput;
+        this.password = password;
     }
 
     public void handle(final CertificateChain chain, final KeyStore jks) {
@@ -45,7 +48,7 @@ public class SaveCommandHandler {
 
                 ChainEntry entry = entryList.get(i);
 
-                if ("JKS".equals(entry.trustedBy())) {
+                if (TrustStatus.JKS == entry.trustedBy()) {
                     System.out.println("     " + entry.dn());
                 } else {
                     System.out.println(ansi().bold().fgRed().a((i + 1)).reset() + " :: " + entry.dn());
@@ -59,10 +62,10 @@ public class SaveCommandHandler {
             if (!"q".equalsIgnoreCase(input)) {
                 ChainEntry chainEntry = entryList.get(Integer.parseInt(input) - 1);
                 X509Certificate certificate = chainEntry.certificate();
-                chainEntry.trustedBy("JKS");
+                chainEntry.trustedBy(TrustStatus.JKS);
 
                 System.out.println();
-                System.out.println("Trust added: [" + ansi().fgGreen().a(certificate.getSubjectDN()).reset() + "]");
+                System.out.println("Trust added: [" + ansi().fgGreen().a(certificate.getSubjectX500Principal()).reset() + "]");
                 System.out.println();
             } else {
 
@@ -71,7 +74,7 @@ public class SaveCommandHandler {
                 System.out.println(input);
 
                 try (OutputStream os = new FileOutputStream(input)) {
-                    jks.store(os, "changeit".toCharArray());
+                    jks.store(os, password.toCharArray());
                 } catch (Exception e) {
                     throw new RuntimeException("Unable to to store TrustStore [" + input + "].", e);
                 } finally {

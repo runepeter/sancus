@@ -2,17 +2,16 @@ package org.brylex.sancus;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.brylex.sancus.resolver.KeyStoreResolver;
-import org.brylex.sancus.resolver.RemoteResolver;
+import static org.brylex.sancus.ResolverSource.JKS;
+import org.brylex.sancus.util.Util;
 import org.junit.jupiter.api.Test;
 
-import java.io.FileInputStream;
-import java.io.InputStream;
+import java.nio.file.Paths;
 import java.security.KeyStore;
-import java.security.Principal;
 import java.security.Security;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
+import static org.brylex.sancus.util.Certificates.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -20,43 +19,12 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class CertificateChainTest {
 
-    public static final X509Certificate CERT_GMAIL = loadCertificate("/mail.google.com.pem");
-    public static final X509Certificate CERT_GOOGLE_G2 = loadCertificate("/google.g2.pem");
-    public static final X509Certificate CERT_AFTENPOSTEN = loadCertificate("/aftenposten.no.pem");
-    public static final X509Certificate CERT_GODADDY_G2 = loadCertificate("/godaddy.g2.pem");
-    public static final X509Certificate CERT_GODADDY_G2_ROOT = loadCertificate("/godaddy.g2.root.pem");
-    public static final X509Certificate CERT_GODADDY_CA = loadCertificate("/godaddy.ca.pem");
-    public static final X509Certificate DIGGERDETTE = loadCertificate("/diggerdette.no.pem");
-    public static final X509Certificate LETSENCRYPT = loadCertificate("/letsencrypt.org.pem");
-
     static {
         Security.addProvider(new BouncyCastleProvider());
     }
 
-    private static X509Certificate loadCertificate(String path) {
-        try (InputStream is = CertificateChainTest.class.getResourceAsStream(path)) {
-            CertificateFactory factory = CertificateFactory.getInstance("X.509");
-            return (X509Certificate) factory.generateCertificate(is);
-        } catch (Exception e) {
-            throw new RuntimeException("Unable to load certificate from classpath resources [" + path + "].", e);
-        }
-    }
-
     private static KeyStore jks(String path, String password) {
-
-        try {
-
-            KeyStore jks = KeyStore.getInstance("JKS");
-
-            try (InputStream is = new FileInputStream(path)) {
-                jks.load(is, password.toCharArray());
-            }
-
-            return jks;
-
-        } catch (Exception e) {
-            throw new RuntimeException("Unable to initialize JKS.", e);
-        }
+        return Util.loadKeyStore(Paths.get(path), password);
     }
 
     @Test
@@ -77,7 +45,7 @@ public class CertificateChainTest {
         assertNotNull(chain.issuedBy());
         assertFalse(chain.isComplete());
 
-        Principal issuerDn = CERT_GOOGLE_G2.getSubjectDN();
+        var issuerDn = CERT_GOOGLE_G2.getSubjectX500Principal();
         assertEquals(issuerDn, chain.issuedBy().dn());
         assertNull(chain.issuedBy().certificate());
     }
@@ -109,7 +77,7 @@ public class CertificateChainTest {
     }
 
     private KeyStoreResolver resolver(KeyStore jks) throws Exception {
-        return new KeyStoreResolver("JKS", jks);
+        return new KeyStoreResolver(JKS, jks);
     }
 
 }

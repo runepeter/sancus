@@ -15,10 +15,11 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.Store;
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
-
+import org.brylex.sancus.ResolverSource;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -87,8 +88,15 @@ public class RemoteResolver implements CertificateChain.Resolver {
     }
 
     byte[] downloadX509CertificateBytes(URL url) {
-        try (InputStream is = url.openStream()) {
-            return is.readAllBytes();
+        try {
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(10000);
+            try (InputStream is = connection.getInputStream()) {
+                return is.readAllBytes();
+            } finally {
+                connection.disconnect();
+            }
         } catch (IOException e) {
             throw new RuntimeException("Unable to download remote certificate bytes.", e);
         }
@@ -101,11 +109,10 @@ public class RemoteResolver implements CertificateChain.Resolver {
         try (InputStream is = new ByteArrayInputStream(bytes)) {
 
             CMSSignedData sd = new CMSSignedData(is);
-            Store certificates = sd.getCertificates();
+            Store<X509CertificateHolder> certificates = sd.getCertificates();
 
-            Collection matches = certificates.getMatches(null);
-            for (Object match : matches) {
-                X509CertificateHolder holder = (X509CertificateHolder) match;
+            Collection<X509CertificateHolder> matches = certificates.getMatches(null);
+            for (X509CertificateHolder holder : matches) {
                 return converter.getCertificate(holder);
             }
 
@@ -126,12 +133,11 @@ public class RemoteResolver implements CertificateChain.Resolver {
         ChainEntry issuer = chain.issuedBy();
         if (issuer.certificate() == null) {
             URL url = getIssuerCaUrl(chain.head().certificate());
-            System.out.println("URL 1: " + url);
 
             if (url != null) {
                 System.out.println(ansi().a("Downloading issuer [").fgBlue().a(issuer.dn()).reset().a("] certificate from [").fgBrightYellow().a(url).reset().a("]\n"));
                 X509Certificate certificate = downloadX509Certificate(url);
-                issuer.apply(certificate, "REMOTE");
+                issuer.apply(certificate, ResolverSource.REMOTE);
             }
 
         }
@@ -144,15 +150,15 @@ public class RemoteResolver implements CertificateChain.Resolver {
     private ChainEntry resolve(ChainEntry entry) {
 
         if (entry.certificate() == null) {
-            System.out.println("UNRESOLVABLE? " + entry.dn());
-        } else if (entry.certificate().getSubjectDN().equals(entry.certificate().getIssuerDN())) {
+            return entry;
+        } else if (entry.certificate().getSubjectX500Principal().equals(entry.certificate().getIssuerX500Principal())) {
             return entry;
         }
 
         ChainEntry issuer = entry.issuedBy();
 
         if (issuer == null) {
-            entry.issuedBy(entry.certificate().getIssuerDN());
+            entry.issuedBy(entry.certificate().getIssuerX500Principal());
             issuer = entry.issuedBy();
         }
 
@@ -168,7 +174,7 @@ public class RemoteResolver implements CertificateChain.Resolver {
 
             System.out.println(ansi().a("Downloading issuer [").fgBlue().a(entry.issuedBy().dn()).reset().a("] certificate from [").fgBrightYellow().a(url).reset().a("]\n"));
             X509Certificate certificate = downloadX509Certificate(url);
-            issuer.apply(certificate, "REMOTE");
+            issuer.apply(certificate, ResolverSource.REMOTE);
         }
 
         resolve(issuer);

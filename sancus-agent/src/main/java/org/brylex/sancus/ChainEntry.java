@@ -1,11 +1,9 @@
 package org.brylex.sancus;
 
-import org.brylex.sancus.util.Util;
-
 import java.security.KeyStoreException;
-import java.security.Principal;
 import java.security.cert.X509Certificate;
 import java.util.UUID;
+import javax.security.auth.x500.X500Principal;
 
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 12/04/2017.
@@ -13,34 +11,34 @@ import java.util.UUID;
 public class ChainEntry {
 
     private X509Certificate certificate;
-    private Principal dn;
+    private X500Principal dn;
     private CertificateChain chain;
     private ChainEntry issuer;
-    private String resolvedBy = "DEFAULT";
-    private String trustedBy = "NOT";
+    private ResolverSource resolvedBy = ResolverSource.DEFAULT;
+    private TrustStatus trustedBy = TrustStatus.UNTRUSTED;
 
     ChainEntry(X509Certificate certificate, CertificateChain chain) {
         this.chain = chain;
         this.certificate = certificate;
-        this.dn = certificate.getSubjectDN();
-        if (!certificate.getSubjectDN().equals(certificate.getIssuerDN())) {
-            this.issuer = new ChainEntry(certificate.getIssuerDN(), chain);
+        this.dn = certificate.getSubjectX500Principal();
+        if (!certificate.getSubjectX500Principal().equals(certificate.getIssuerX500Principal())) {
+            this.issuer = new ChainEntry(certificate.getIssuerX500Principal(), chain);
         }
 
-        this.resolvedBy = "SERVER";
+        this.resolvedBy = ResolverSource.SERVER;
     }
 
-    ChainEntry(Principal principal, CertificateChain chain) {
+    ChainEntry(X500Principal principal, CertificateChain chain) {
         this.chain = chain;
         this.dn = principal;
-        this.resolvedBy = "MISSING";
+        this.resolvedBy = ResolverSource.MISSING;
     }
 
     public X509Certificate certificate() {
         return certificate;
     }
 
-    public Principal dn() {
+    public X500Principal dn() {
         return dn;
     }
 
@@ -49,7 +47,7 @@ public class ChainEntry {
         return this.issuer;
     }
 
-    public ChainEntry issuedBy(Principal issuerDN) {
+    public ChainEntry issuedBy(X500Principal issuerDN) {
         this.issuer = new ChainEntry(issuerDN, this.chain);
         return this.issuer;
     }
@@ -58,38 +56,38 @@ public class ChainEntry {
         return issuer;
     }
 
-    public String resolvedBy() {
+    public ResolverSource resolvedBy() {
         return resolvedBy;
     }
 
-    public String resolvedBy(String resolverId) {
-        this.resolvedBy = resolverId;
+    public ResolverSource resolvedBy(ResolverSource source) {
+        this.resolvedBy = source;
         return resolvedBy;
     }
 
-    public String trustedBy() {
+    public TrustStatus trustedBy() {
         return trustedBy;
     }
 
-    public String trustedBy(String resolverId) {
-        this.trustedBy = resolverId;
-        return resolverId;
+    public TrustStatus trustedBy(TrustStatus status) {
+        this.trustedBy = status;
+        return status;
     }
 
-    public ChainEntry apply(X509Certificate certificate, String resolverId) {
+    public ChainEntry apply(X509Certificate certificate, ResolverSource source) {
         this.certificate = certificate;
-        this.resolvedBy = resolverId;
+        this.resolvedBy = source;
 
-        if (Util.equals(certificate.getSubjectDN(), certificate.getIssuerDN())) {
+        if (certificate.getSubjectX500Principal().equals(certificate.getIssuerX500Principal())) {
             this.chain.last(this);
         } else {
             this.chain.last(this);
-            issuedBy(certificate.getIssuerDN());
+            issuedBy(certificate.getIssuerX500Principal());
         }
 
         // TODO hva er dette??
         try {
-            chain.jks().setCertificateEntry(resolverId + "_" + UUID.randomUUID().toString(), certificate);
+            chain.jks().setCertificateEntry(source.name() + "_" + UUID.randomUUID().toString(), certificate);
         } catch (KeyStoreException e) {
             throw new RuntimeException("Unable to apply certificate to KeyStore.", e);
         }
@@ -109,11 +107,7 @@ public class ChainEntry {
     @Override
     public String toString() {
 
-        StringBuffer buffer = new StringBuffer();
-
-        buffer.append("[").append(resolvedBy).append("][").append(trustedBy).append("] ").append(dn());
-
-        return buffer.toString();
+        return "[" + resolvedBy + "][" + trustedBy + "] " + dn();
     }
 
     public interface Visitor {

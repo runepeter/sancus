@@ -2,6 +2,7 @@ package org.brylex.sancus.resolver;
 
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
+import org.brylex.sancus.ResolverSource;
 import org.brylex.sancus.util.TestServer;
 import org.junit.jupiter.api.Test;
 
@@ -29,7 +30,7 @@ public class HandshakeResolverTest {
             final CertificateChain chain = resolver.resolve(CertificateChain.create(empty()));
             assertNotNull(chain);
             assertTrue(chain.isComplete());
-            assertEquals("SERVER", chain.last().resolvedBy());
+            assertEquals(ResolverSource.SERVER, chain.last().resolvedBy());
         }
     }
 
@@ -44,7 +45,7 @@ public class HandshakeResolverTest {
             assertNotNull(chain);
             assertFalse(chain.isComplete());
             assertTrue(chain.last().dn().getName().contains("Brylex Development Root CA"));
-            assertEquals("MISSING", chain.last().resolvedBy());
+            assertEquals(ResolverSource.MISSING, chain.last().resolvedBy());
             assertNull(chain.last().certificate());
         }
     }
@@ -60,7 +61,7 @@ public class HandshakeResolverTest {
             assertNotNull(chain);
             assertFalse(chain.isComplete());
             assertTrue(chain.last().dn().getName().contains("Brylex Development Intermediate CA"));
-            assertEquals("MISSING", chain.last().resolvedBy());
+            assertEquals(ResolverSource.MISSING, chain.last().resolvedBy());
             assertNull(chain.last().certificate());
         }
     }

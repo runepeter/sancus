@@ -1,9 +1,5 @@
 package org.brylex.sancus.util;
 
-import org.brylex.sancus.CertificateChainTest;
-import org.brylex.sancus.resolver.DirResolverTest;
-import org.brylex.sancus.resolver.RemoteResolverTest;
-
 import java.io.InputStream;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -23,12 +19,19 @@ public class Certificates {
     public static final X509Certificate LETSENCRYPT = loadCertificate("/letsencrypt.org.pem");
     public static final X509Certificate DST_ROOT = loadCertificate("/dst.root.x3.pem");
     public static final X509Certificate OPENSSL_INTERMEDIATE = loadCertificate("/ca/intermediate/certs/intermediate.cert.pem");
+    public static final X509Certificate LOCALHOST = loadCertificate("/ca/intermediate/certs/127.0.0.1.cert.pem");
+    public static final X509Certificate CERT_GMAIL = loadCertificate("/mail.google.com.pem");
+    public static final X509Certificate CERT_GOOGLE_G2 = loadCertificate("/google.g2.pem");
+    public static final X509Certificate CERT_AFTENPOSTEN = loadCertificate("/aftenposten.no.pem");
+    public static final X509Certificate CERT_GODADDY_G2 = loadCertificate("/godaddy.g2.pem");
+    public static final X509Certificate CERT_GODADDY_G2_ROOT = loadCertificate("/godaddy.g2.root.pem");
+    public static final X509Certificate CERT_GODADDY_CA = loadCertificate("/godaddy.ca.pem");
 
     private Certificates() {
     }
 
-    private static X509Certificate loadCertificate(String path) {
-        try (InputStream is = CertificateChainTest.class.getResourceAsStream(path)) {
+    public static X509Certificate loadCertificate(String path) {
+        try (InputStream is = Certificates.class.getResourceAsStream(path)) {
             CertificateFactory factory = CertificateFactory.getInstance("X.509");
             return (X509Certificate) factory.generateCertificate(is);
         } catch (Exception e) {

@@ -13,9 +13,9 @@ public class ChainComparator implements Comparator<X509Certificate> {
 
         if (left.equals(right)) {
             return 0;
-        } else if (left.getIssuerDN().equals(right.getSubjectDN())) {
+        } else if (left.getIssuerX500Principal().equals(right.getSubjectX500Principal())) {
             return -1;
-        } else if (left.getSubjectDN().equals(right.getIssuerDN())) {
+        } else if (left.getSubjectX500Principal().equals(right.getIssuerX500Principal())) {
             return 1;
         } else {
             return 0;

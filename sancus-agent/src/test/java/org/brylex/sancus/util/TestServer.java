@@ -3,11 +3,10 @@ package org.brylex.sancus.util;
 import com.sun.net.httpserver.*;
 
 import javax.net.ssl.*;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.nio.file.Paths;
 import java.security.KeyStore;
 
 /**
@@ -43,10 +42,7 @@ public class TestServer implements AutoCloseable {
 
         final char[] password = "changeit".toCharArray();
 
-        final KeyStore jks = KeyStore.getInstance("JKS");
-        try (InputStream is = new FileInputStream(jksPath)) {
-            jks.load(is, password);
-        }
+        final KeyStore jks = Util.loadKeyStore(Paths.get(jksPath), "changeit");
 
         final KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         kmf.init(jks, password);

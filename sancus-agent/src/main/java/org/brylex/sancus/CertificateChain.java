@@ -1,6 +1,7 @@
 package org.brylex.sancus;
 
 import org.brylex.sancus.resolver.HandshakeResolver;
+import org.brylex.sancus.util.Util;
 
 import java.io.InputStream;
 import java.security.KeyStore;
@@ -47,7 +48,7 @@ public class CertificateChain {
 
                 KeyStore dummy = KeyStore.getInstance("JKS");
                 try (InputStream is = HandshakeResolver.class.getResourceAsStream("/dummy.jks")) {
-                    dummy.load(is, "changeit".toCharArray());
+                    dummy.load(is, Util.DEFAULT_KEYSTORE_PASSWORD.toCharArray());
                 }
 
                 java.security.cert.Certificate dummyCertificate = dummy.getCertificate("sancus-dummy");
@@ -108,7 +109,7 @@ public class CertificateChain {
         List<X509Certificate> list = toList();
         X509Certificate last = list.get(list.size() - 1);
 
-        return last.getSubjectDN().equals(last.getIssuerDN());
+        return last.getSubjectX500Principal().equals(last.getIssuerX500Principal());
     }
 
     public List<X509Certificate> toList() {
@@ -140,7 +141,7 @@ public class CertificateChain {
     @Override
     public String toString() {
 
-        StringBuffer buffer = new StringBuffer();
+        StringBuilder buffer = new StringBuilder();
 
         ChainEntry entry = head;
         while (entry != null) {

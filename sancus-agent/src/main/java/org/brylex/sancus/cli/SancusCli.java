@@ -1,7 +1,9 @@
 package org.brylex.sancus.cli;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.brylex.sancus.*;
+import org.brylex.sancus.CertificateChain;
+import org.brylex.sancus.ResolverSource;
+import org.brylex.sancus.TrustMarkerVisitor;
 import org.brylex.sancus.resolver.DirResolver;
 import org.brylex.sancus.resolver.HandshakeResolver;
 import org.brylex.sancus.resolver.KeyStoreResolver;
@@ -12,10 +14,11 @@ import org.fusesource.jansi.AnsiConsole;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
-import org.kohsuke.args4j.spi.OptionHandler;
+
 
 import javax.net.ssl.*;
 import java.io.*;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,8 +27,6 @@ import java.nio.file.StandardOpenOption;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.Security;
-import java.util.List;
-import java.util.concurrent.TimeoutException;
 
 import static org.fusesource.jansi.Ansi.Color.BLUE;
 import static org.fusesource.jansi.Ansi.ansi;
@@ -52,7 +53,7 @@ public class SancusCli implements CertificateChain.Callback {
     public Path trustStore;
 
     @Option(name = "--truststorepwd", aliases = "-k", usage = "Truststore password")
-    public String trustStorePassword = "changeit";
+    public String trustStorePassword = Util.DEFAULT_KEYSTORE_PASSWORD;
 
     @Option(name = "--interactive", aliases = "-i", usage = "Interactive mode")
     public boolean interactiveMode = false;
@@ -142,14 +143,14 @@ public class SancusCli implements CertificateChain.Callback {
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             tmf.init(chain.jks());
 
-            SSLContext context = SSLContext.getInstance("SSL");
+            SSLContext context = SSLContext.getInstance("TLS");
             context.init(null, tmf.getTrustManagers(), null);
 
             SSLSocketFactory factory = context.getSocketFactory();
-            SSLSocket socket = (SSLSocket) factory.createSocket(host, port);
-            socket.setSoTimeout(5000);
-            socket.startHandshake();
-            socket.close();
+            try (SSLSocket socket = (SSLSocket) factory.createSocket(host, port)) {
+                socket.setSoTimeout(5000);
+                socket.startHandshake();
+            }
 
             System.out.println(ansi().a("Status: ").fg(Ansi.Color.GREEN).a("SUCCESS").reset());
 
@@ -157,7 +158,7 @@ public class SancusCli implements CertificateChain.Callback {
 
             if (e instanceof UnknownHostException) {
                 System.out.println(ansi().a("Status: ").fg(Ansi.Color.RED).a("UNKNOWN_HOST_EXCEPTION").reset());
-            } else if (e instanceof TimeoutException) {
+            } else if (e instanceof SocketTimeoutException) {
                 System.out.println(ansi().a("Status: ").fg(Ansi.Color.RED).a("TIMEOUT_EXCEPTION").reset());
             } else if (e instanceof SSLHandshakeException) {
                 System.out.println(ansi().a("Status: ").fg(Ansi.Color.RED).a("SSL_HANDSHAKE_EXCEPTION").reset());
@@ -188,9 +189,9 @@ public class SancusCli implements CertificateChain.Callback {
         String option = Util.consoleInput("Option");
         if ("1".equalsIgnoreCase(option)) {
 
-            KeyStore defaultKeyStore = Util.loadKeyStore(resolveDefaultJksPath(), "changeit");
+            KeyStore defaultKeyStore = Util.loadKeyStore(resolveDefaultJksPath(), trustStorePassword);
 
-            new KeyStoreResolver("DEFAULT", defaultKeyStore).resolve(chain);
+            new KeyStoreResolver(ResolverSource.DEFAULT, defaultKeyStore).resolve(chain);
 
             Util.printChain(chain);
 
@@ -236,13 +237,8 @@ public class SancusCli implements CertificateChain.Callback {
         KeyStore jks;
         if (jksPath.toFile().isFile()) {
 
-            try (InputStream is = Files.newInputStream(jksPath, StandardOpenOption.READ)) {
-                jks = KeyStore.getInstance("JKS");
-                jks.load(is, trustStorePassword.toCharArray());
-                System.out.println("Loaded KeyStore [" + jksPath.toAbsolutePath() + "].");
-            } catch (Exception e) {
-                throw new RuntimeException("Unable to initialize empty KeyStore [" + jksPath + "].", e);
-            }
+            jks = Util.loadKeyStore(jksPath, trustStorePassword);
+            System.out.println("Loaded KeyStore [" + jksPath.toAbsolutePath() + "].");
 
         } else {
 

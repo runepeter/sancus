@@ -1,6 +1,7 @@
 package org.brylex.sancus.resolver;
 
 import org.brylex.sancus.CertificateChain;
+import org.brylex.sancus.ResolverSource;
 import org.brylex.sancus.util.Util;
 import org.junit.jupiter.api.Test;
 
@@ -21,13 +22,13 @@ public class KeyStoreResolverTest {
         Util.printChain(chain);
         assertNull(chain.last().certificate());
         assertTrue(chain.last().dn().getName().contains("Starfield Class 2 Certification Authority"));
-        assertEquals("MISSING", chain.last().resolvedBy());
+        assertEquals(ResolverSource.MISSING, chain.last().resolvedBy());
 
         KeyStore jks = Util.loadKeyStore(Paths.get("src/test/resources/jks/aws.jks"), "changeit");
-        new KeyStoreResolver("TEST", jks).resolve(chain);
+        new KeyStoreResolver(ResolverSource.JKS, jks).resolve(chain);
         Util.printChain(chain);
         assertTrue(chain.isComplete());
         assertEquals(VALICERT_CLASS2, chain.last().certificate());
-        assertEquals("TEST", chain.last().resolvedBy());
+        assertEquals(ResolverSource.JKS, chain.last().resolvedBy());
     }
 }

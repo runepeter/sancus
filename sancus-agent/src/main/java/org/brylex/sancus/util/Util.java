@@ -2,19 +2,16 @@ package org.brylex.sancus.util;
 
 import org.brylex.sancus.CertificateChain;
 import org.brylex.sancus.ChainEntry;
+import org.brylex.sancus.ResolverSource;
+import org.brylex.sancus.TrustStatus;
 import org.fusesource.jansi.Ansi;
 
-import javax.naming.InvalidNameException;
-import javax.naming.ldap.LdapName;
-import javax.naming.ldap.Rdn;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.security.KeyStore;
-import java.security.Principal;
-import java.util.List;
 
 import static org.fusesource.jansi.Ansi.Color.RED;
 import static org.fusesource.jansi.Ansi.ansi;
@@ -24,22 +21,9 @@ import static org.fusesource.jansi.Ansi.ansi;
  */
 public class Util {
 
+    public static final String DEFAULT_KEYSTORE_PASSWORD = "changeit";
+
     private Util() {
-    }
-
-    public static boolean equals(Principal left, Principal right) {
-        try {
-            List<Rdn> rdn1 = new LdapName(left.getName()).getRdns();
-            List<Rdn> rdn2 = new LdapName(right.getName()).getRdns();
-
-            if(rdn1.size() != rdn2.size()) {
-                return false;
-            }
-
-            return rdn1.containsAll(rdn2);
-        } catch (InvalidNameException e) {
-            throw new RuntimeException("Unable to compare certificate subjects.", e);
-        }
     }
 
     public static KeyStore loadKeyStore(Path path, String password) {
@@ -71,10 +55,10 @@ public class Util {
             @Override
             public void visit(ChainEntry entry) {
 
-                boolean trusted = !entry.trustedBy().equals("NOT");
-                String r = String.format("%-7s", entry.resolvedBy());
-                Ansi.Color rc = r.equals("DEFAULT") ? Ansi.Color.YELLOW : Ansi.Color.BLUE;
-                rc = r.equals("MISSING") ? RED : rc;
+                boolean trusted = entry.trustedBy() != TrustStatus.UNTRUSTED;
+                String r = String.format("%-7s", entry.resolvedBy().name());
+                Ansi.Color rc = entry.resolvedBy() == ResolverSource.DEFAULT ? Ansi.Color.YELLOW : Ansi.Color.BLUE;
+                rc = entry.resolvedBy() == ResolverSource.MISSING ? RED : rc;
 
                 String t = trusted ? "T" : "U";
                 Ansi.Color tc = trusted ? Ansi.Color.GREEN : RED;
@@ -103,7 +87,8 @@ public class Util {
             } else {
                 System.out.print(prompt + ": ");
                 System.out.flush();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+                try {
                     line = reader.readLine();
                 } catch (IOException e) {
                     throw new RuntimeException("Unable to read input from console.", e);

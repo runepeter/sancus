@@ -38,7 +38,7 @@ public class SaveCommandHandlerTest {
                 System.out.print(prompt + ": ");
                 return input.next();
             }
-        });
+        }, Util.DEFAULT_KEYSTORE_PASSWORD);
 
         handler.handle(chain, jks);
 
@@ -54,7 +54,7 @@ public class SaveCommandHandlerTest {
             jks.setCertificateEntry("test0", certificate);
 
             for (int i=0;i<certificates.length;i++) {
-                jks.setCertificateEntry("test" + (i + 1), certificate);
+                jks.setCertificateEntry("test" + (i + 1), certificates[i]);
             }
 
             return jks;
