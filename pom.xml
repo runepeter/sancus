@@ -10,7 +10,9 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>sancus-core</module>
         <module>sancus-agent</module>
+        <module>sancus-cli</module>
     </modules>
 
     <properties>
