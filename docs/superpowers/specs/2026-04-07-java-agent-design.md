@@ -1,7 +1,7 @@
 # Sancus Java Agent — Design Spec
 
 **Dato:** 2026-04-07
-**Status:** Draft (rev 2 — adresserer review-funn)
+**Status:** Draft (rev 3 — bootstrap bridge, adapter-fix, null-semantikk)
 
 ## Oversikt
 
@@ -10,24 +10,29 @@ Gjør Sancus til en Java Agent (`-javaagent`) som intercepter utgående TLS-hand
 ## Done-kriterier
 
 - [ ] `java -javaagent:sancus-agent.jar -jar myapp.jar` intercepter TLS-tilkoblinger
-- [ ] Handshakes via `null` TrustManager[] (JVM-defaults) fanges også
-- [ ] Avviste handshakes (CertificateException) audites og logges
+- [ ] Handshakes med eksplisitt `TrustManager[]` fanges og audites
+- [ ] Avviste handshakes (CertificateException) audites og logges med `[REJECTED]`-prefix
 - [ ] Billige checks (Expiry, WeakAlgorithm, Transparency) kjører automatisk
 - [ ] Dyre checks (OCSP, ChainCompleteness) er opt-in via system properties
 - [ ] Findings logges via JUL med severity-filtrering
 - [ ] Deduplisering basert på cert-fingerprint — maks én gang per TTL-intervall
-- [ ] Integrasjonstest bekrefter end-to-end-flyten via premain
+- [ ] Integrasjonstest bekrefter end-to-end-flyten via premain (Failsafe)
 - [ ] Agent-JAR inneholder kun nødvendige dependencies (ingen Logback/picocli/jansi)
+
+## Kjente begrensninger (MVP)
+
+- **`SSLContext.init(km, null, sr)` fanges ikke.** Når `TrustManager[]` er `null`, bruker JVM providerens interne defaults. Å materialisere egne defaults i advice ville endre semantikken til `init()`, noe som bryter prinsippet "observer uten å endre". De fleste produksjons-HTTP-klienter (HttpClient, OkHttp, Apache HC) bruker eksplisitte TrustManagers. Dekkes eventuelt i fremtidig iterasjon via `TrustManagerFactory.getTrustManagers()`-instrumentering.
+- **ProtocolCheck er deaktivert.** Krever socket/engine-kontekst som TrustManager-wrapping ikke gir. Dekkes ved SSLSocket/SSLEngine-instrumentering i fremtidig iterasjon.
 
 ## Out of scope
 
 - SSLSocket/SSLEngine-instrumentering (protocol/cipher-info)
 - ProtocolCheck i agent-modus
-- JSON-fil output
-- JMX MBeans
+- JSON-fil output, JMX MBeans
 - SPI/plugin-system for custom handlers
 - Produksjon/ops-hardening (metrics, alerting, webhooks)
 - Konfigurasjonsfiler (kun system properties i MVP)
+- Fange `SSLContext.init()` med null TrustManager[]
 
 ## Verifiseringskommandoer
 
@@ -35,8 +40,8 @@ Gjør Sancus til en Java Agent (`-javaagent`) som intercepter utgående TLS-hand
 # Bygg hele prosjektet
 mvn clean package
 
-# Kjør tester
-mvn test
+# Kjør unit-tester + integrasjonstester (Failsafe)
+mvn verify
 
 # Verifiser agent-JAR manifest
 unzip -p sancus-agent/target/sancus-agent-develop-SNAPSHOT.jar META-INF/MANIFEST.MF | grep Premain-Class
@@ -64,91 +69,141 @@ sancus/
 │       ├── CertificateChain.java
 │       ├── SancusTrustManager.java
 │       └── ...
-├── sancus-agent/                   ← javaagent JAR (core + byte-buddy, JUL)
+├── sancus-agent/                   ← javaagent JAR
 │   └── src/main/java/org/brylex/sancus/agent/
-│       ├── SancusAgent.java
-│       ├── SancusAgentTrustManager.java
-│       ├── SslContextAdvice.java
-│       ├── AgentConfig.java
-│       └── AuditCache.java
+│       ├── SancusAgent.java        ← premain(), agent classloader
+│       ├── AgentConfig.java        ← agent classloader
+│       ├── AgentAuditCallback.java ← audit-logikk, agent classloader
+│       ├── AuditCache.java         ← agent classloader
+│       └── bootstrap/
+│           └── SancusAgentTrustManager.java  ← bootstrap classloader (minimal)
 └── sancus-cli/                     ← CLI JAR (core + picocli + logback + jansi + gson)
     └── src/main/java/org/brylex/sancus/cli/
         ├── SancusCli.java
         └── command/
 ```
 
-**Begrunnelse (funn #7):** Én felles JAR drar inn Logback, picocli, Jansi og Gson i agenten, som risikerer klassekonflikter med mål-applikasjonen. Ved å splitte moduler får agenten kun `sancus-core` + Byte Buddy + BouncyCastle — ingen logging-framework, ingen CLI-deps.
-
 **Dependencies per modul:**
-- `sancus-core`: BouncyCastle (bcprov, bcpkix), SLF4J API (kun interface, ingen implementasjon)
+- `sancus-core`: BouncyCastle (bcprov, bcpkix)
 - `sancus-agent`: sancus-core, Byte Buddy
 - `sancus-cli`: sancus-core, picocli, Logback, Jansi, Gson
 
-## 2. Instrumentering
+## 2. Bootstrap bridge-arkitektur
+
+### Problemet
+
+`SSLContext` lastes av bootstrap classloader. Advice som transformerer `SSLContext.init()` kjører i bootstrap-kontekst. Alle klasser som advice-koden refererer må derfor også være tilgjengelige fra bootstrap.
+
+Å injisere hele `sancus-core` (med BouncyCastle, audit-checks, etc.) på bootstrap classloader er risikabelt og unødvendig stort. I stedet brukes et **bridge-mønster**.
+
+### Løsningen: Minimal bootstrap shim + callback
+
+**To lag:**
+
+1. **Bootstrap-lag** (`SancusAgentTrustManager`): En tynn wrapper som kun delegerer TrustManager-kall og kaller en `BiConsumer<X509Certificate[], Boolean>` callback. Ingen referanser til sancus-core, AgentConfig, AuditCache, eller noen annen agent-klasse. Kun JDK-typer.
+
+2. **Agent-lag** (`AgentAuditCallback`, `AgentConfig`, `AuditCache`): Tung audit-logikk som kjører i agent classloader. Settes som callback av `premain()`.
+
+```
+Bootstrap classloader:
+  └─ SancusAgentTrustManager (kun JDK-typer: X509ExtendedTrustManager, BiConsumer)
+
+Agent classloader:
+  ├─ SancusAgent (premain)
+  ├─ SslContextAdvice (inlines i SSLContext via Byte Buddy)
+  ├─ AgentAuditCallback (BiConsumer-impl, refererer sancus-core)
+  ├─ AgentConfig
+  └─ AuditCache
+```
 
 ### premain()
 
-```
-premain(String args, Instrumentation inst)
-  ├─ AgentConfig.fromSystemProperties()
-  ├─ if (!config.enabled()) return
-  ├─ Bootstrap-injeksjon: legg agent-klasser på bootstrap classloader
-  └─ AgentBuilder.Default()
-       .with(RedefinitionStrategy.RETRANSFORMATION)
-       .enableBootstrapInjection(inst, tempDir)
-       .type(is(SSLContext.class))
-       .transform(...)
-       .installOn(inst)
-```
-
-**Bootstrap-injeksjon (funn #4):** `SSLContext` lastes av bootstrap classloader. Advice-koden og `SancusAgentTrustManager` må også være på bootstrap classloader, ellers får vi `ClassNotFoundException` når transformert JDK-kode prøver å referere agent-klasser. Byte Buddy's `enableBootstrapInjection(inst, tempDir)` løser dette ved å injisere en temp-JAR med agent-klassene på bootstrap classpath.
-
-`tempDir` opprettes via `Files.createTempDirectory("sancus-agent")` med shutdown-hook for opprydding.
-
-### SslContextAdvice
-
-Byte Buddy `@Advice.OnMethodEnter` på `SSLContext.init(KeyManager[], TrustManager[], SecureRandom)`:
-
-**Null-håndtering (funn #1):** Når `TrustManager[]` er `null`, bruker JVM default TrustManagerFactory. Advice-koden må håndtere dette:
-
 ```java
-@Advice.OnMethodEnter
-static void onInit(@Advice.Argument(value = 1, readOnly = false) TrustManager[] tms) {
-    // Når null: resolvér JVM-defaults eksplisitt
-    if (tms == null) {
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-            TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init((KeyStore) null);  // trigger default truststore
-        tms = tmf.getTrustManagers();
-    }
+public class SancusAgent {
+    public static void premain(String args, Instrumentation inst) throws Exception {
+        AgentConfig config = AgentConfig.fromSystemProperties();
+        if (!config.enabled()) return;
 
-    // Wrap hver X509TrustManager/X509ExtendedTrustManager
-    TrustManager[] wrapped = new TrustManager[tms.length];
-    for (int i = 0; i < tms.length; i++) {
-        if (tms[i] instanceof SancusAgentTrustManager) {
-            wrapped[i] = tms[i];  // unngå dobbel-wrapping
-        } else if (tms[i] instanceof X509ExtendedTrustManager ext) {
-            wrapped[i] = new SancusAgentTrustManager(ext);
-        } else if (tms[i] instanceof X509TrustManager x509) {
-            wrapped[i] = new SancusAgentTrustManager(x509);
-        } else {
-            wrapped[i] = tms[i];  // ikke-X509, behold som den er
-        }
+        // 1. Sett opp audit-callback (agent classloader)
+        AgentAuditCallback callback = new AgentAuditCallback(config);
+        SancusAgentTrustManager.setAuditCallback(callback);
+
+        // 2. Bootstrap-injiser kun SancusAgentTrustManager
+        Path tempDir = Files.createTempDirectory("sancus-agent");
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> deleteRecursive(tempDir)));
+
+        // 3. Installer instrumentering
+        new AgentBuilder.Default()
+            .with(RedefinitionStrategy.RETRANSFORMATION)
+            .enableBootstrapInjection(inst, tempDir.toFile())
+            .type(named("javax.net.ssl.SSLContext"))
+            .transform((builder, type, classLoader, module, domain) ->
+                builder.visit(Advice.to(SslContextAdvice.class)
+                    .on(named("init"))))
+            .installOn(inst);
     }
-    tms = wrapped;
 }
 ```
 
-### SancusAgentTrustManager
+### SslContextAdvice
 
-**Typebevaring (funn #2):** Extender `X509ExtendedTrustManager`, ikke bare `X509TrustManager`. Dette bevarer JSSE-kontekst (Socket/SSLEngine-overloads) og unngår at JSSE faller tilbake til mindre informerte kodepaths.
-
-**Audit-alltid via try/finally (funn #3):** Audit kjører uansett om delegaten kaster. Avviste handshakes er spesielt interessante.
+Byte Buddy advice som inlines i `SSLContext.init()`. Refererer kun `SancusAgentTrustManager` (bootstrap-lastet) og JDK-typer.
 
 ```java
+public class SslContextAdvice {
+    @Advice.OnMethodEnter
+    static void onInit(@Advice.Argument(value = 1, readOnly = false) TrustManager[] tms) {
+        if (tms == null) return;  // ikke observer null-defaults (kjent begrensning)
+
+        TrustManager[] wrapped = new TrustManager[tms.length];
+        for (int i = 0; i < tms.length; i++) {
+            if (tms[i] instanceof SancusAgentTrustManager) {
+                wrapped[i] = tms[i];  // unngå dobbel-wrapping
+            } else if (tms[i] instanceof X509ExtendedTrustManager ext) {
+                wrapped[i] = new SancusAgentTrustManager(ext);
+            } else if (tms[i] instanceof X509TrustManager x509) {
+                wrapped[i] = new SancusAgentTrustManager(x509);
+            } else {
+                wrapped[i] = tms[i];
+            }
+        }
+        tms = wrapped;
+    }
+}
+```
+
+### SancusAgentTrustManager (bootstrap)
+
+Minimal wrapper — **ingen referanser til sancus-core**. Kun JDK-typer.
+
+Håndterer både `X509ExtendedTrustManager`- og `X509TrustManager`-delegater korrekt:
+
+```java
+package org.brylex.sancus.agent.bootstrap;
+
 public class SancusAgentTrustManager extends X509ExtendedTrustManager {
-    private final X509ExtendedTrustManager delegate;
-    // Hvis original bare er X509TrustManager, wraps i en adapter
+
+    private final X509TrustManager delegate;
+    private final boolean delegateIsExtended;
+
+    // Callback settes av premain() — lever i agent classloader
+    private static volatile BiConsumer<X509Certificate[], Boolean> auditCallback;
+
+    public static void setAuditCallback(BiConsumer<X509Certificate[], Boolean> cb) {
+        auditCallback = cb;
+    }
+
+    public SancusAgentTrustManager(X509ExtendedTrustManager delegate) {
+        this.delegate = delegate;
+        this.delegateIsExtended = true;
+    }
+
+    public SancusAgentTrustManager(X509TrustManager delegate) {
+        this.delegate = delegate;
+        this.delegateIsExtended = false;
+    }
+
+    // --- checkServerTrusted: 2-arg (basis) ---
 
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType)
@@ -159,26 +214,115 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
         } catch (CertificateException e) {
             thrown = e;
         } finally {
-            auditChain(chain, thrown != null);
+            fireAudit(chain, thrown != null);
         }
         if (thrown != null) throw thrown;
     }
 
-    // Samme mønster for Extended-overloads:
+    // --- checkServerTrusted: Socket-overload (Extended) ---
+
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket)
-            throws CertificateException { /* same try/finally → auditChain(chain, rejected) */ }
+            throws CertificateException {
+        CertificateException thrown = null;
+        try {
+            if (delegateIsExtended) {
+                ((X509ExtendedTrustManager) delegate).checkServerTrusted(chain, authType, socket);
+            } else {
+                // Fallback: delegate er bare X509TrustManager, bruk 2-arg
+                delegate.checkServerTrusted(chain, authType);
+            }
+        } catch (CertificateException e) {
+            thrown = e;
+        } finally {
+            fireAudit(chain, thrown != null);
+        }
+        if (thrown != null) throw thrown;
+    }
+
+    // --- checkServerTrusted: SSLEngine-overload (Extended) ---
 
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
-            throws CertificateException { /* same try/finally → auditChain(chain, rejected) */ }
+            throws CertificateException {
+        CertificateException thrown = null;
+        try {
+            if (delegateIsExtended) {
+                ((X509ExtendedTrustManager) delegate).checkServerTrusted(chain, authType, engine);
+            } else {
+                delegate.checkServerTrusted(chain, authType);
+            }
+        } catch (CertificateException e) {
+            thrown = e;
+        } finally {
+            fireAudit(chain, thrown != null);
+        }
+        if (thrown != null) throw thrown;
+    }
 
-    private void auditChain(X509Certificate[] chain, boolean rejected) {
-        String cacheKey = AuditCache.fingerprint(chain[0]);
-        if (AuditCache.INSTANCE.recentlyAudited(cacheKey)) return;
+    // --- checkClientTrusted ---
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType)
+            throws CertificateException {
+        delegate.checkClientTrusted(chain, authType);
+    }
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket)
+            throws CertificateException {
+        if (delegateIsExtended) {
+            ((X509ExtendedTrustManager) delegate).checkClientTrusted(chain, authType, socket);
+        } else {
+            delegate.checkClientTrusted(chain, authType);
+        }
+    }
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
+            throws CertificateException {
+        if (delegateIsExtended) {
+            ((X509ExtendedTrustManager) delegate).checkClientTrusted(chain, authType, engine);
+        } else {
+            delegate.checkClientTrusted(chain, authType);
+        }
+    }
+
+    @Override
+    public X509Certificate[] getAcceptedIssuers() {
+        return delegate.getAcceptedIssuers();
+    }
+
+    // --- Audit bridge ---
+
+    private void fireAudit(X509Certificate[] chain, boolean rejected) {
+        BiConsumer<X509Certificate[], Boolean> cb = auditCallback;
+        if (cb != null) {
+            try {
+                cb.accept(chain, rejected);
+            } catch (Exception ignored) {
+                // Audit skal aldri påvirke applikasjonens TLS-oppførsel
+            }
+        }
+    }
+}
+```
+
+### AgentAuditCallback (agent classloader)
+
+All tung logikk lever her — trygt i agent classloader med full tilgang til sancus-core:
+
+```java
+public class AgentAuditCallback implements BiConsumer<X509Certificate[], Boolean> {
+    private static final Logger logger = Logger.getLogger("sancus");
+    private final AgentConfig config;
+
+    @Override
+    public void accept(X509Certificate[] chain, Boolean rejected) {
+        String fingerprint = AuditCache.fingerprint(chain[0]);
+        if (AuditCache.INSTANCE.recentlyAudited(fingerprint)) return;
 
         HandshakeInfo info = new HandshakeInfo(null, null, chain);
-        AgentConfig config = AgentConfig.current();
         List<Finding> findings = config.checks().stream()
             .flatMap(c -> c.check(info, chain).stream())
             .toList();
@@ -189,32 +333,12 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
             .forEach(f -> logger.log(toJulLevel(f.severity()),
                 "[sancus] {0} — {1}{2}", new Object[]{f.severity(), prefix, f.summary()}));
     }
-
-    // Delegering for øvrige metoder
-    @Override
-    public void checkClientTrusted(X509Certificate[] c, String a) throws CertificateException {
-        delegate.checkClientTrusted(c, a);
-    }
-    @Override
-    public void checkClientTrusted(X509Certificate[] c, String a, Socket s) throws CertificateException {
-        delegate.checkClientTrusted(c, a, s);
-    }
-    @Override
-    public void checkClientTrusted(X509Certificate[] c, String a, SSLEngine e) throws CertificateException {
-        delegate.checkClientTrusted(c, a, e);
-    }
-    @Override
-    public X509Certificate[] getAcceptedIssuers() {
-        return delegate.getAcceptedIssuers();
-    }
 }
 ```
 
-**X509TrustManager → X509ExtendedTrustManager-adapter:** Når den originale TrustManager bare implementerer `X509TrustManager` (ikke Extended), wraps den i en tynn adapter som delegerer de tre basis-metodene og kaster `UnsupportedOperationException` for Socket/SSLEngine-overloads (som aldri vil kalles i denne kode-pathen, siden JSSE velger overload basert på den registrerte typen).
-
 ## 3. Deduplisering
 
-**Global, fingerprint-basert cache (funn #5):**
+Global, fingerprint-basert cache. Singleton deles på tvers av alle TrustManager-instanser.
 
 ```java
 public final class AuditCache {
@@ -223,14 +347,14 @@ public final class AuditCache {
     private final ConcurrentHashMap<String, Instant> cache = new ConcurrentHashMap<>();
 
     public static String fingerprint(X509Certificate cert) {
-        // SHA-256 over DER-encoded cert — unik per sertifikat
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(cert.getEncoded());
         return HexFormat.of().formatHex(digest);
     }
 
     public boolean recentlyAudited(String fingerprint) {
         Instant lastSeen = cache.get(fingerprint);
-        if (lastSeen != null && lastSeen.plus(AgentConfig.current().cacheTtl()).isAfter(Instant.now())) {
+        Duration ttl = AgentConfig.current().cacheTtl();
+        if (lastSeen != null && lastSeen.plus(ttl).isAfter(Instant.now())) {
             return true;
         }
         cache.put(fingerprint, Instant.now());
@@ -238,12 +362,10 @@ public final class AuditCache {
     }
 
     // Enkel eviction: fjern entries eldre enn 2x TTL ved hver 100. kall
-    // Unngår ubegrenset vekst uten å trenge en scheduled executor
 }
 ```
 
-- **Singleton** — deles på tvers av alle `SancusAgentTrustManager`-instanser
-- **Fingerprint** som nøkkel — SHA-256 av DER-encoded cert. Unikt per sertifikat, ingen falske treff ved SAN-overlapp eller cert-rotasjon
+- **Fingerprint** (SHA-256 av DER-encoded cert) som nøkkel — unikt per sertifikat
 - **Thread-safe** via `ConcurrentHashMap`
 
 ## 4. Konfigurasjon
@@ -286,17 +408,13 @@ public record AgentConfig(
 }
 ```
 
-**Billige checks (alltid på):** ExpiryCheck, WeakAlgorithmCheck, TransparencyCheck.
-
-**ProtocolCheck** er deaktivert i agent-modus (krever socket-info som TrustManager ikke har tilgang til via Extended-overloads med Socket/SSLEngine — men dette er en mulig fremtidig utvidelse).
-
 ## 5. Logging og observerbarhet
 
 ### JUL, ikke SLF4J
 
-Agent-koden bruker `java.util.logging`. CLI-koden bruker Logback. Audit-koden i `sancus-core` forblir logging-fri (returnerer `Finding`-objekter).
+Agent-koden bruker `java.util.logging`. Med modulsplitt inneholder agent-JARen ikke Logback.
 
-Med modulsplitt (seksjon 1) er dette nå konsistent: agent-JARen inneholder ikke Logback.
+`SancusAgentTrustManager` (bootstrap) logger ikke selv — den kaller bare `fireAudit()`. All logging skjer i `AgentAuditCallback` (agent classloader) via JUL.
 
 ### Log-format
 
@@ -306,8 +424,6 @@ WARNING [sancus] WARNING — SHA256withRSA with 2048-bit key for CN=api.example.
 WARNING [sancus] CRITICAL — [REJECTED] Certificate expired: CN=api.example.com (expired 2026-03-01T00:00:00Z)
 INFO    [sancus] OK — 3 SCT(s) embedded in CN=api.example.com
 ```
-
-Findings fra avviste handshakes prefixes med `[REJECTED]` for å skille dem fra vellykkede.
 
 ## 6. Bygging og manifest
 
@@ -357,13 +473,16 @@ Findings fra avviste handshakes prefixes med `[REJECTED]` for å skille dem fra 
                 </transformers>
             </configuration>
         </plugin>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+                <argLine>-javaagent:${project.build.directory}/${project.build.finalName}.jar</argLine>
+            </configuration>
+        </plugin>
     </plugins>
 </build>
 ```
-
-### CLI-modul
-
-Beholder eksisterende shade-oppsett med `Main-Class: org.brylex.sancus.cli.SancusCli`.
 
 ### Bruksmønster
 
@@ -380,23 +499,32 @@ java -javaagent:sancus-agent.jar -Dsancus.checks.ocsp=true -Dsancus.log.level=OK
 
 ## 7. Testing
 
-### Integrasjonstest (funn #6)
+### Integrasjonstester (Maven Failsafe, IT-suffix)
 
-Testen må verifisere faktisk premain-oppstart, ikke bare runtime attach:
+Kjører via `mvn verify` med faktisk `-javaagent` JVM-argument — tester premain-flow, ikke runtime attach.
 
-1. **Maven Failsafe** for integrasjonstester (IT-suffix)
-2. Start en lokal HTTPS-server med self-signed cert og en TrustManager som stoler på det
-3. Konfigurér `maven-failsafe-plugin` med `-javaagent:${project.build.directory}/sancus-agent.jar` som JVM-argument — tester faktisk premain-flow
-4. Gjør HTTPS-tilkobling via `HttpClient` med en `SSLContext` som stoler på test-certet
-5. Verifiser findings via custom JUL handler registrert i test-setup
-6. Separat test: gjør tilkobling med en `SSLContext` som **ikke** stoler på certet, verifiser at `[REJECTED]`-findings logges og `CertificateException` propageres
+1. **SancusAgentIT** — Vellykket handshake:
+   - Start lokal HTTPS-server med self-signed cert
+   - Opprett `SSLContext` som stoler på test-certet (eksplisitt TrustManager[])
+   - Gjør HTTPS-tilkobling
+   - Verifiser at findings logges via custom JUL handler
 
-### Unit-tester
+2. **SancusAgentRejectedIT** — Avvist handshake:
+   - Start lokal HTTPS-server med self-signed cert
+   - Opprett `SSLContext` med default TrustManager som IKKE stoler på certet
+   - Gjør HTTPS-tilkobling, forvent `SSLHandshakeException`
+   - Verifiser at `[REJECTED]`-findings logges
+   - Verifiser at exception propageres uendret
 
-- `AgentConfig.fromSystemProperties()` med ulike property-kombinasjoner
-- `AuditCache` — fingerprint-generering, TTL-basert deduplisering, eviction
-- `SancusAgentTrustManager` — verifiser at audit kjører via try/finally ved CertificateException
-- `SslContextAdvice` — null TrustManager[] resolverer defaults, dobbel-wrapping forhindres, X509ExtendedTrustManager bevares
+3. **SancusAgentDoubleWrapIT** — Dobbel-wrapping:
+   - Init to SSLContext-instanser med samme TrustManager
+   - Verifiser at wrapping kun skjer én gang
+
+### Unit-tester (Maven Surefire)
+
+- `AgentConfigTest` — system property-parsing, defaults, checks()-liste
+- `AuditCacheTest` — fingerprint, TTL-deduplisering, eviction
+- `SancusAgentTrustManagerTest` — try/finally ved CertificateException, delegering av Extended-overloads, fallback til 2-arg for rene X509TrustManager-delegater
 
 ### Test-dependencies
 
@@ -411,9 +539,9 @@ Testen må verifisere faktisk premain-oppstart, ikke bare runtime attach:
 
 ## 8. Fremtidige utvidelser (utenfor MVP)
 
-- SSLSocket-instrumentering for ProtocolCheck (og Socket/SSLEngine-kontekst i Extended-overloads)
+- `TrustManagerFactory.getTrustManagers()`-instrumentering for å fange null-default-caset
+- SSLSocket/SSLEngine-instrumentering for ProtocolCheck
 - JSON-fil output og JMX MBeans
 - SPI for custom Finding-handlers
 - `sancus.policy=BLOCK` for å avvise svake tilkoblinger
 - Ops-hardening: metrics, alerting, webhooks
-- Separat lightweight agent-JAR uten BouncyCastle (kun ExpiryCheck + WeakAlgorithmCheck)
