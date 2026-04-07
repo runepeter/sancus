@@ -90,7 +90,7 @@
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>3.5.3</version>
                 <configuration>
-                    <argLine>-javaagent:${project.build.directory}/${project.build.finalName}.jar</argLine>
+                    <argLine>-javaagent:${project.build.directory}/${project.build.finalName}.jar -Dsancus.log.level=OK --add-opens java.base/javax.net.ssl=ALL-UNNAMED</argLine>
                 </configuration>
                 <executions>
                     <execution>
