@@ -1,0 +1,171 @@
+# AIA-til-KeyStore: Automatisk sertifikatresolving
+
+**Dato:** 2026-04-07
+**Status:** Godkjent
+
+## Formål
+
+Når et TLS-handshake feiler fordi serveren sender en ufullstendig sertifikatkjede, skal Sancus automatisk hente manglende sertifikater via AIA (Authority Information Access) og sende en komplett kjede til den underliggende TrustManager. Dette gjelder både agent-modus og CLI-modus, med forskjellig mekanikk.
+
+## Done-kriterier
+
+- Agent: `SancusAgentTrustManager` utvider kjeden via AIA før delegering til original TrustManager
+- Agent: Resolvede kjeder caches med TTL for å unngå gjentatte nettverkskall
+- Agent: Fail-open — hvis AIA-resolving feiler, sendes original kjede videre uendret
+- Agent: Aktivert by default, konfigurerbart via `sancus.aia.resolve`
+- CLI: `sancus resolve --keystore <path>` skriver en PKCS12-fil med alle resolvede sertifikater
+- Tester for alle nye komponenter
+
+## Out of scope
+
+- Persistent caching av AIA-resolvede sertifikater på disk (kun in-memory)
+- Mutasjon av JVM-ens globale TrustStore (cacerts)
+- Client-sertifikat-resolving (kun server-kjeder)
+- Konfigurerbar KeyStore-type i CLI (kun PKCS12 for MVP)
+
+## Verifiseringskommandoer
+
+```bash
+mvn -pl sancus-core,sancus-agent,sancus-cli test
+mvn -pl sancus-agent verify  # integrasjonstester
+```
+
+---
+
+## Arkitektur
+
+### Tilnærming: Dobbel callback (audit + resolve)
+
+Utvider det eksisterende bootstrap-bridge-mønsteret med en ny callback. Bootstrap-shimen (`SancusAgentTrustManager`) kan ikke referere sancus-core-klasser, så AIA-logikken lever i agent classloader og eksponeres som en `Function<X509Certificate[], X509Certificate[]>`.
+
+### Dataflyt (agent-modus)
+
+```
+SSLContext.init() intercepted av SslContextAdvice
+  → TrustManager[] wrappet i SancusAgentTrustManager
+
+checkServerTrusted(chain, authType):
+  1. tryResolve(chain) → extendedChain
+     - Kall resolveCallback.apply(chain)
+     - Fail-open: exception → returner original chain
+     - Null callback → returner original chain
+  2. delegate.checkServerTrusted(extendedChain, authType)
+  3. fireAudit(extendedChain, rejected)
+```
+
+---
+
+## Komponentdesign
+
+### 1. SancusAgentTrustManager (bootstrap classloader)
+
+**Endringer:**
+
+Nytt statisk felt:
+```java
+public static volatile Function<X509Certificate[], X509Certificate[]> resolveCallback = null;
+```
+
+Ny privat metode:
+```java
+private X509Certificate[] tryResolve(X509Certificate[] chain) {
+    try {
+        Function<X509Certificate[], X509Certificate[]> cb = resolveCallback;
+        if (cb != null) {
+            return cb.apply(chain);
+        }
+    } catch (Exception ignored) {
+        // Resolve must never affect SSL handshake outcome
+    }
+    return chain;
+}
+```
+
+Alle tre `checkServerTrusted()`-overloads endres til å kalle `tryResolve(chain)` først, og bruke resultatet for delegering og audit.
+
+### 2. AgentResolveCallback (ny klasse, agent classloader)
+
+**Pakke:** `org.brylex.sancus.agent`
+**Implementerer:** `Function<X509Certificate[], X509Certificate[]>`
+
+**Logikk:**
+1. Beregn fingerprint av leaf-sertifikat (chain[0])
+2. Sjekk cache — hvis nylig resolvet, returner cachet kjede
+3. Bygg `CertificateChain` fra arrayet
+4. Kjør `RemoteResolver.resolve()` for å hente manglende sertifikater via AIA
+5. Konverter tilbake til `X509Certificate[]` (leaf → intermediates → root)
+6. Lagre i cache med TTL
+7. Returner utvidet kjede
+
+**Cache:** `ConcurrentHashMap<String, CachedChain>` der `CachedChain` er en record med `X509Certificate[] chain` og `Instant resolvedAt`. Samme TTL som audit-cache (`sancus.cache.ttl.minutes`, default 5 min). Eviction ved hver N-te kall, likt `AuditCache`.
+
+**Feilhåndtering:** Alle exceptions fanges, original chain returneres (fail-open).
+
+### 3. AgentConfig-utvidelse
+
+Ny property:
+- `sancus.aia.resolve` (default: `true`) — aktiverer/deaktiverer AIA-resolving
+
+Nytt felt i recorden:
+```java
+boolean aiaResolveEnabled
+```
+
+### 4. SancusAgent.premain() — wiring
+
+Etter eksisterende audit callback-setup:
+```java
+if (config.aiaResolveEnabled()) {
+    AgentResolveCallback resolveCallback = new AgentResolveCallback(config);
+    SancusAgentTrustManager.resolveCallback = resolveCallback;
+
+    // Også på bootstrap-kopien (samme mønster som audit callback)
+    Class<?> bootstrapCopy = Class.forName(...);
+    Field resolveField = bootstrapCopy.getField("resolveCallback");
+    resolveField.set(null, resolveCallback);
+}
+```
+
+### 5. CLI: ResolveCommand — KeyStore-output
+
+**Ny parameter:** `--keystore <path>` (valgfri, picocli `@Option`)
+
+Når angitt:
+1. Kjør resolving som i dag
+2. Samle alle sertifikater fra `CertificateChain.toList()`
+3. Opprett `KeyStore.getInstance("PKCS12")`
+4. Legg inn hvert sertifikat med alias basert på subject CN
+5. Skriv til angitt path med tom passord-streng
+
+Uten `--keystore`: uendret oppførsel.
+
+---
+
+## Testplan
+
+### Enhetstester
+
+- **AgentResolveCallback:** Mock `RemoteResolver`, verifiser at kjeden utvides korrekt
+- **AgentResolveCallback cache:** Verifiser at andre kall med samme leaf returnerer cachet resultat, og at TTL-eviction fungerer
+- **SancusAgentTrustManager.tryResolve():** Null callback → original chain, exception → original chain, fungerende callback → utvidet chain
+- **AgentConfig:** Verifiser parsing av `sancus.aia.resolve` property
+
+### Integrasjonstester
+
+- **Agent premain:** Server med ufullstendig kjede → verifiser at handshake lykkes med AIA-resolve aktiv
+- **CLI:** `--keystore` flagg → verifiser at PKCS12-fil skrives og er lesbar
+
+---
+
+## Beslutninger
+
+| Beslutning | Valg | Begrunnelse |
+|------------|------|-------------|
+| Kontekst | Begge moduser (agent + CLI) | Forskjellig mekanikk, men samme underliggende resolver |
+| AIA-resolvede certs | Brukes kun i wrapperen, ikke lagt i globale stores | Isolasjon, ingen sideeffekter |
+| Scope | Intermediates + root | La original TrustManager avgjøre trust |
+| Feilhåndtering | Fail-open | Sancus skal aldri gjøre ting verre |
+| Default | Aktivert by default | Hele poenget med featuren |
+| Kjede til delegat | Hele utvidede kjeden (server → root) | TrustManager bestemmer selv |
+| CLI output | PKCS12 KeyStore | Moderne, bred støtte |
+| Cache | TTL-basert, likt AuditCache | Gjenbruk eksisterende mønster |
