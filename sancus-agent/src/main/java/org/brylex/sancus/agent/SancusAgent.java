@@ -44,6 +44,23 @@ public class SancusAgent {
         injectBootstrapClass(inst, tempDir,
                 "org/brylex/sancus/agent/bootstrap/SancusAgentTrustManager.class");
 
+        // Set audit callback BEFORE installOn to avoid race window where
+        // SSLContext.init() fires before callback is set
+        AgentAuditCallback callback = new AgentAuditCallback();
+        SancusAgentTrustManager.auditCallback = callback;
+
+        // Also set on the bootstrap-loaded copy
+        try {
+            Class<?> bootstrapCopy = Class.forName(
+                    "org.brylex.sancus.agent.bootstrap.SancusAgentTrustManager", true, null);
+            if (bootstrapCopy != SancusAgentTrustManager.class) {
+                Field callbackField = bootstrapCopy.getField("auditCallback");
+                callbackField.set(null, callback);
+            }
+        } catch (ClassNotFoundException e) {
+            logger.warning("[sancus] Bootstrap copy of SancusAgentTrustManager not found — audit may not work: " + e.getMessage());
+        }
+
         // Install instrumentation
         new AgentBuilder.Default()
             .ignore(none())
@@ -53,22 +70,6 @@ public class SancusAgent {
             .transform((builder, type, classLoader, module, domain) ->
                 builder.visit(Advice.to(SslContextAdvice.class).on(named("init"))))
             .installOn(inst);
-
-        // Set audit callback — on the agent classloader copy (direct reference)
-        AgentAuditCallback callback = new AgentAuditCallback();
-        SancusAgentTrustManager.auditCallback = callback;
-
-        // Also try setting on the bootstrap-loaded copy (if injected by Byte Buddy)
-        try {
-            Class<?> bootstrapCopy = Class.forName(
-                    "org.brylex.sancus.agent.bootstrap.SancusAgentTrustManager", true, null);
-            if (bootstrapCopy != SancusAgentTrustManager.class) {
-                Field callbackField = bootstrapCopy.getField("auditCallback");
-                callbackField.set(null, callback);
-            }
-        } catch (ClassNotFoundException ignored) {
-            // Bootstrap injection may not have occurred yet; the direct reference will work
-        }
 
         logger.info("[sancus] Agent installed — intercepting SSLContext.init()");
     }
