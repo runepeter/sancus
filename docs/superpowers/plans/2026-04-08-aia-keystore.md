@@ -193,9 +193,19 @@ public List<Finding> check(HandshakeInfo handshakeInfo, X509Certificate[] chain)
     // If a resolved chain is available (from agent AIA resolve), use it
     // instead of fetching again via RemoteResolver
     if (handshakeInfo.resolvedChain() != null && handshakeInfo.resolvedChain().length > chain.length) {
-        int resolved = handshakeInfo.resolvedChain().length - chain.length;
-        return List.of(new ChainFinding(Severity.WARNING, chain.length, false,
-                List.of(resolved + " certificate(s) resolved via AIA")));
+        X509Certificate[] resolved = handshakeInfo.resolvedChain();
+        X509Certificate last = resolved[resolved.length - 1];
+        boolean complete = last.getSubjectX500Principal().equals(last.getIssuerX500Principal());
+
+        if (complete) {
+            int extra = resolved.length - chain.length;
+            return List.of(new ChainFinding(Severity.WARNING, chain.length, false,
+                    List.of(extra + " certificate(s) resolved via AIA")));
+        } else {
+            // Resolved chain is still incomplete — report CRITICAL
+            String missingIssuer = last.getIssuerX500Principal().getName();
+            return List.of(new ChainFinding(Severity.CRITICAL, chain.length, false, List.of(missingIssuer)));
+        }
     }
 
     // No pre-resolved chain — fetch via AIA
@@ -697,7 +707,7 @@ class AgentResolveCallbackTest {
     @Test
     void returnsOriginalChainWhenAlreadyComplete() throws Exception {
         // A self-signed cert is already "complete"
-        X509Certificate selfSigned = loadCertFromJks("/jks/selfsigned.jks", "sancus-test");
+        X509Certificate selfSigned = loadCertFromJks("/jks/selfsigned.jks", "test");
         X509Certificate[] chain = {selfSigned};
 
         AgentResolveCallback callback = new AgentResolveCallback();
@@ -709,7 +719,7 @@ class AgentResolveCallbackTest {
 
     @Test
     void cachesResolvedChainByLeafFingerprint() throws Exception {
-        X509Certificate selfSigned = loadCertFromJks("/jks/selfsigned.jks", "sancus-test");
+        X509Certificate selfSigned = loadCertFromJks("/jks/selfsigned.jks", "test");
         X509Certificate[] chain = {selfSigned};
 
         AgentResolveCallback callback = new AgentResolveCallback();
@@ -896,8 +906,10 @@ public class AgentAuditCallback implements BiConsumer<X509Certificate[], Boolean
         List<AuditCheck> checks = config.checks();
         Severity minLevel = config.logLevel();
 
-        // Read resolved chain from ThreadLocal (set by SancusAgentTrustManager)
-        X509Certificate[] resolvedChain = SancusAgentTrustManager.lastResolvedChain.get();
+        // Read resolved chain from ThreadLocal on the bootstrap-loaded copy.
+        // The agent-loader import and the bootstrap-loaded class are different classes
+        // with separate static fields, so we must use reflection to read the bootstrap copy.
+        X509Certificate[] resolvedChain = readResolvedChainFromBootstrap();
 
         HandshakeInfo handshakeInfo = new HandshakeInfo("unknown", "unknown", chain, resolvedChain);
 
@@ -914,6 +926,20 @@ public class AgentAuditCallback implements BiConsumer<X509Certificate[], Boolean
             } catch (Exception ignored) {
                 // A failing check must not propagate — keep auditing remaining checks
             }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static X509Certificate[] readResolvedChainFromBootstrap() {
+        try {
+            Class<?> bootstrapCopy = Class.forName(
+                    "org.brylex.sancus.agent.bootstrap.SancusAgentTrustManager", true, null);
+            java.lang.reflect.Field field = bootstrapCopy.getField("lastResolvedChain");
+            ThreadLocal<X509Certificate[]> tl = (ThreadLocal<X509Certificate[]>) field.get(null);
+            return tl != null ? tl.get() : null;
+        } catch (Exception e) {
+            // Fallback: try agent-loader copy (unit test scenario)
+            return SancusAgentTrustManager.lastResolvedChain.get();
         }
     }
 
