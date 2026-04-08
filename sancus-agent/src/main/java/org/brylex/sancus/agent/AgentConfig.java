@@ -16,6 +16,7 @@ public record AgentConfig(
         boolean enabled,
         boolean ocspEnabled,
         boolean chainEnabled,
+        boolean aiaResolveEnabled,
         Severity logLevel,
         int cacheTtlMinutes
 ) {
@@ -34,10 +35,11 @@ public record AgentConfig(
         boolean enabled = Boolean.parseBoolean(System.getProperty("sancus.enabled", "true"));
         boolean ocsp = Boolean.parseBoolean(System.getProperty("sancus.checks.ocsp", "false"));
         boolean chain = Boolean.parseBoolean(System.getProperty("sancus.checks.chain", "false"));
+        boolean aiaResolve = Boolean.parseBoolean(System.getProperty("sancus.aia.resolve", "true"));
         String levelName = System.getProperty("sancus.log.level", "WARNING");
         Severity logLevel = Severity.valueOf(levelName);
         int ttl = Integer.parseInt(System.getProperty("sancus.cache.ttl.minutes", "5"));
-        return new AgentConfig(enabled, ocsp, chain, logLevel, ttl);
+        return new AgentConfig(enabled, ocsp, chain, aiaResolve, logLevel, ttl);
     }
 
     public List<AuditCheck> checks() {

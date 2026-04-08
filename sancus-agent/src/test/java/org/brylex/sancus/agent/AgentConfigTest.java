@@ -19,6 +19,7 @@ class AgentConfigTest {
         System.clearProperty("sancus.checks.chain");
         System.clearProperty("sancus.log.level");
         System.clearProperty("sancus.cache.ttl.minutes");
+        System.clearProperty("sancus.aia.resolve");
     }
 
     @Test
@@ -64,6 +65,19 @@ class AgentConfigTest {
         List<AuditCheck> checks = config.checks();
         // ExpiryCheck, WeakAlgorithmCheck, TransparencyCheck, OcspCheck, ChainCompletenessCheck
         assertEquals(5, checks.size());
+    }
+
+    @Test
+    void aiaResolveEnabledByDefault() {
+        AgentConfig config = AgentConfig.fromSystemProperties();
+        assertTrue(config.aiaResolveEnabled());
+    }
+
+    @Test
+    void aiaResolveCanBeDisabled() {
+        System.setProperty("sancus.aia.resolve", "false");
+        AgentConfig config = AgentConfig.fromSystemProperties();
+        assertFalse(config.aiaResolveEnabled());
     }
 
     @Test
