@@ -140,12 +140,13 @@ if (config.aiaResolveEnabled()) {
 **Viktig: non-interactive path.** `ResolveCommand.call()` har i dag en interaktiv `while (true)` løkke som venter på stdin-input. Når `--keystore` er angitt, skal kommandoen kjøre non-interaktivt:
 
 1. Kjør handshake og bygg initial kjede (som i dag)
-2. Kjør `RemoteResolver.resolve()` automatisk for å hente manglende sertifikater via AIA
-3. Samle alle sertifikater fra `CertificateChain.toList()`
-4. Opprett `KeyStore.getInstance("JKS")` — JKS for kompatibilitet med eksisterende loading-kode (`Util.loadKeyStore()`, `ResolveCommand --truststore`, `CertificateChain`)
-5. Legg inn hvert sertifikat med alias basert på subject CN
-6. Skriv til angitt path med passord "changeit" (konvensjon fra cacerts)
-7. Returner exit code 0 (suksess) — **ikke** gå inn i interaktiv løkke
+2. **Sjekk at kjeden har minst ett sertifikat.** Hvis handshake feilet (DNS, timeout, TLS-feil) vil `CertificateChain` være tom. I så fall: print feilmelding til stderr og returner exit code 2 (CRITICAL). Ikke skriv KeyStore-fil.
+3. Kjør `RemoteResolver.resolve()` automatisk for å hente manglende sertifikater via AIA
+4. Samle alle sertifikater fra `CertificateChain.toList()`
+5. Opprett `KeyStore.getInstance("JKS")` — JKS for kompatibilitet med eksisterende loading-kode (`Util.loadKeyStore()`, `ResolveCommand --truststore`, `CertificateChain`)
+6. Legg inn hvert sertifikat med alias basert på subject CN
+7. Skriv til angitt path med passord "changeit" (konvensjon fra cacerts)
+8. Returner exit code 0 (suksess) — **ikke** gå inn i interaktiv løkke
 
 Uten `--keystore`: uendret oppførsel (interaktiv løkke som i dag).
 
