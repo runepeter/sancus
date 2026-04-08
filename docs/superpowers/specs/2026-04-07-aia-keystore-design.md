@@ -83,6 +83,10 @@ private X509Certificate[] tryResolve(X509Certificate[] chain) {
 
 Alle tre `checkServerTrusted()`-overloads endres til å kalle `tryResolve(chain)` først, og bruke resultatet for delegering. Audit-callbacken mottar fortsatt den **originale** kjeden fra serveren — ikke den resolvede — slik at `ChainCompletenessCheck` fortsetter å rapportere manglende intermediates.
 
+**Unngå dobbel AIA-fetch:** Når `sancus.checks.chain=true`, vil `ChainCompletenessCheck` kalle `RemoteResolver.resolve()` på den originale (ufullstendige) kjeden — samme AIA-kall som resolve-callbacken allerede har gjort. For å unngå dette dupliserte nettverkskallet, lagrer `SancusAgentTrustManager` den resolvede kjeden i en `ThreadLocal<X509Certificate[]>` etter vellykket resolving. `AgentAuditCallback` leser denne ThreadLocal-en og gjør den tilgjengelig for `ChainCompletenessCheck` via en ny overload eller et nytt felt på `HandshakeInfo` (`resolvedChain`). `ChainCompletenessCheck` kan da sammenligne original og resolvet kjede for å rapportere manglende intermediates uten å re-fetche.
+
+ThreadLocal ryddes i en `finally`-blokk etter `fireAudit()` for å unngå lekkasje.
+
 ### 2. AgentResolveCallback (ny klasse, agent classloader)
 
 **Pakke:** `org.brylex.sancus.agent`
@@ -133,14 +137,17 @@ if (config.aiaResolveEnabled()) {
 
 **Ny parameter:** `--keystore <path>` (valgfri, picocli `@Option`)
 
-Når angitt:
-1. Kjør resolving som i dag
-2. Samle alle sertifikater fra `CertificateChain.toList()`
-3. Opprett `KeyStore.getInstance("JKS")` — JKS for kompatibilitet med eksisterende loading-kode (`Util.loadKeyStore()`, `ResolveCommand --truststore`, `CertificateChain`)
-4. Legg inn hvert sertifikat med alias basert på subject CN
-5. Skriv til angitt path med passord "changeit" (konvensjon fra cacerts)
+**Viktig: non-interactive path.** `ResolveCommand.call()` har i dag en interaktiv `while (true)` løkke som venter på stdin-input. Når `--keystore` er angitt, skal kommandoen kjøre non-interaktivt:
 
-Uten `--keystore`: uendret oppførsel.
+1. Kjør handshake og bygg initial kjede (som i dag)
+2. Kjør `RemoteResolver.resolve()` automatisk for å hente manglende sertifikater via AIA
+3. Samle alle sertifikater fra `CertificateChain.toList()`
+4. Opprett `KeyStore.getInstance("JKS")` — JKS for kompatibilitet med eksisterende loading-kode (`Util.loadKeyStore()`, `ResolveCommand --truststore`, `CertificateChain`)
+5. Legg inn hvert sertifikat med alias basert på subject CN
+6. Skriv til angitt path med passord "changeit" (konvensjon fra cacerts)
+7. Returner exit code 0 (suksess) — **ikke** gå inn i interaktiv løkke
+
+Uten `--keystore`: uendret oppførsel (interaktiv løkke som i dag).
 
 **Begrunnelse for JKS fremfor PKCS12:** Hele kodebasen bruker `KeyStore.getInstance("JKS")` — `Util.loadKeyStore()`, `CertificateChain`, `ResolveCommand --truststore`, og alle tester. En PKCS12-fil ville ikke kunne leses tilbake av noen av disse uten samtidige endringer i loaderen. JKS er riktig valg for MVP.
 
@@ -176,4 +183,6 @@ Uten `--keystore`: uendret oppførsel.
 | BouncyCastle i agent | Registreres av `AgentResolveCallback` | `RemoteResolver` krever BC-provider, som kun CLI registrerer i dag |
 | Audit-chain | Original (ikke resolvet) chain til audit | `ChainCompletenessCheck` må se ufullstendig kjede for å rapportere |
 | RemoteResolver stdout | Dempes i agent-modus | Unngå å lekke "Downloading issuer..." til appens stdout |
+| CLI `--keystore` | Non-interaktiv path, bypass interaktiv løkke | `ResolveCommand.call()` blokkerer ellers på stdin |
+| Dobbel AIA-fetch | ThreadLocal + `HandshakeInfo.resolvedChain` | Unngå at `ChainCompletenessCheck` re-fetcher det resolve-callback allerede har hentet |
 | Cache | TTL-basert, likt AuditCache | Gjenbruk eksisterende mønster |
