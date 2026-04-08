@@ -123,29 +123,29 @@ Legg til et valgfritt `resolvedChain`-felt som `ChainCompletenessCheck` kan bruk
 
 - [ ] **Step 1: Skriv test for ChainCompletenessCheck med resolvedChain**
 
-I `AuditCheckTest.java`, legg til en ny test som verifiserer at `ChainCompletenessCheck` bruker `resolvedChain` fra `HandshakeInfo` istedenfor å kalle `RemoteResolver`:
+I `AuditCheckTest.java`, legg til en ny test i `ChainCompletenessCheckTest` nested class. Bruker `Certificates.LOCALHOST` (ufullstendig kjede) og `generateCert()` (self-signed = root) som allerede finnes i test-klassen:
 
 ```java
 @Test
-void chainCompletenessCheck_usesResolvedChainWhenPresent() throws Exception {
-    // Load an incomplete chain (leaf only)
-    X509Certificate leaf = loadCert("certs/incomplete-leaf.pem"); // en cert uten root
+void usesResolvedChainWhenPresent() throws Exception {
+    // Certificates.LOCALHOST is an incomplete chain (leaf issued by intermediate CA)
+    X509Certificate leaf = Certificates.LOCALHOST;
 
-    // Build a "resolved" chain with the full path
-    X509Certificate root = loadCert("certs/root.pem");
-    X509Certificate[] resolvedChain = new X509Certificate[]{leaf, root};
+    // Generate a self-signed cert to act as "root" in the resolved chain
+    X509Certificate fakeRoot = generateCert(365, 2048, "SHA256WithRSA");
+    X509Certificate[] resolvedChain = new X509Certificate[]{leaf, fakeRoot};
 
-    // HandshakeInfo with resolvedChain set — should NOT trigger remote fetch
+    // HandshakeInfo with resolvedChain set — should use it instead of fetching via AIA
     HandshakeInfo info = new HandshakeInfo("TLSv1.3", "TLS_AES_256_GCM_SHA384",
             new X509Certificate[]{leaf}, resolvedChain);
 
-    ChainCompletenessCheck check = new ChainCompletenessCheck();
     List<Finding> findings = check.check(info, new X509Certificate[]{leaf});
 
-    // Should report WARNING (missing intermediates) but NOT hit the network
+    // Should report WARNING (chain was incomplete, resolved via AIA)
     assertFalse(findings.isEmpty());
     Finding.ChainFinding cf = (Finding.ChainFinding) findings.getFirst();
     assertEquals(Severity.WARNING, cf.severity());
+    assertTrue(cf.summary().contains("resolved via AIA"));
 }
 ```
 
@@ -344,23 +344,42 @@ Utvid bootstrap-shimen med resolve-callback og ThreadLocal for å passere resolv
 
 - [ ] **Step 1: Skriv tester for tryResolve() og ThreadLocal**
 
-Opprett `sancus-agent/src/test/java/org/brylex/sancus/agent/bootstrap/SancusAgentTrustManagerTest.java`:
+Opprett `sancus-agent/src/test/java/org/brylex/sancus/agent/bootstrap/SancusAgentTrustManagerTest.java`.
+
+Bruker en enkel capturing delegate (ingen Mockito — ikke i agent POM) som fanger opp hvilken chain som ble delegert:
 
 ```java
 package org.brylex.sancus.agent.bootstrap;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import javax.net.ssl.SSLEngine;
 import javax.net.ssl.X509ExtendedTrustManager;
+import java.io.InputStream;
+import java.net.Socket;
+import java.security.KeyStore;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class SancusAgentTrustManagerTest {
+
+    private X509Certificate testCert;
+    private X509Certificate testCert2;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        KeyStore ks = KeyStore.getInstance("JKS");
+        try (InputStream is = getClass().getResourceAsStream("/jks/selfsigned.jks")) {
+            ks.load(is, "changeit".toCharArray());
+        }
+        testCert = (X509Certificate) ks.getCertificate("test");
+        // Use same cert as a stand-in for a second cert in the resolved chain
+        testCert2 = testCert;
+    }
 
     @AfterEach
     void cleanup() {
@@ -370,45 +389,38 @@ class SancusAgentTrustManagerTest {
     }
 
     @Test
-    void checkServerTrusted_delegatesResolvedChainWhenCallbackSet() throws Exception {
-        X509Certificate mockLeaf = mock(X509Certificate.class);
-        X509Certificate mockRoot = mock(X509Certificate.class);
-        X509Certificate[] original = {mockLeaf};
-        X509Certificate[] resolved = {mockLeaf, mockRoot};
+    void delegatesResolvedChainWhenCallbackSet() throws Exception {
+        X509Certificate[] original = {testCert};
+        X509Certificate[] resolved = {testCert, testCert2};
 
-        X509ExtendedTrustManager delegate = mock(X509ExtendedTrustManager.class);
-
+        CapturingDelegate delegate = new CapturingDelegate();
         SancusAgentTrustManager.resolveCallback = chain -> resolved;
 
         SancusAgentTrustManager tm = new SancusAgentTrustManager(delegate);
         tm.checkServerTrusted(original, "RSA");
 
         // Delegate should receive the resolved chain
-        verify(delegate).checkServerTrusted(resolved, "RSA");
+        assertSame(resolved, delegate.lastChain);
     }
 
     @Test
-    void checkServerTrusted_usesOriginalChainWhenCallbackNull() throws Exception {
-        X509Certificate mockLeaf = mock(X509Certificate.class);
-        X509Certificate[] original = {mockLeaf};
+    void usesOriginalChainWhenCallbackNull() throws Exception {
+        X509Certificate[] original = {testCert};
 
-        X509ExtendedTrustManager delegate = mock(X509ExtendedTrustManager.class);
-
+        CapturingDelegate delegate = new CapturingDelegate();
         SancusAgentTrustManager.resolveCallback = null;
 
         SancusAgentTrustManager tm = new SancusAgentTrustManager(delegate);
         tm.checkServerTrusted(original, "RSA");
 
-        verify(delegate).checkServerTrusted(original, "RSA");
+        assertSame(original, delegate.lastChain);
     }
 
     @Test
-    void checkServerTrusted_failOpenWhenCallbackThrows() throws Exception {
-        X509Certificate mockLeaf = mock(X509Certificate.class);
-        X509Certificate[] original = {mockLeaf};
+    void failOpenWhenCallbackThrows() throws Exception {
+        X509Certificate[] original = {testCert};
 
-        X509ExtendedTrustManager delegate = mock(X509ExtendedTrustManager.class);
-
+        CapturingDelegate delegate = new CapturingDelegate();
         SancusAgentTrustManager.resolveCallback = chain -> {
             throw new RuntimeException("AIA fetch failed");
         };
@@ -417,18 +429,15 @@ class SancusAgentTrustManagerTest {
         tm.checkServerTrusted(original, "RSA");
 
         // Should fall back to original chain
-        verify(delegate).checkServerTrusted(original, "RSA");
+        assertSame(original, delegate.lastChain);
     }
 
     @Test
-    void checkServerTrusted_auditsWithOriginalChain() throws Exception {
-        X509Certificate mockLeaf = mock(X509Certificate.class);
-        X509Certificate mockRoot = mock(X509Certificate.class);
-        X509Certificate[] original = {mockLeaf};
-        X509Certificate[] resolved = {mockLeaf, mockRoot};
+    void auditsWithOriginalChain() throws Exception {
+        X509Certificate[] original = {testCert};
+        X509Certificate[] resolved = {testCert, testCert2};
 
-        X509ExtendedTrustManager delegate = mock(X509ExtendedTrustManager.class);
-
+        CapturingDelegate delegate = new CapturingDelegate();
         SancusAgentTrustManager.resolveCallback = chain -> resolved;
 
         X509Certificate[][] auditedChain = {null};
@@ -442,14 +451,11 @@ class SancusAgentTrustManagerTest {
     }
 
     @Test
-    void checkServerTrusted_setsThreadLocalWithResolvedChain() throws Exception {
-        X509Certificate mockLeaf = mock(X509Certificate.class);
-        X509Certificate mockRoot = mock(X509Certificate.class);
-        X509Certificate[] original = {mockLeaf};
-        X509Certificate[] resolved = {mockLeaf, mockRoot};
+    void setsThreadLocalWithResolvedChain() throws Exception {
+        X509Certificate[] original = {testCert};
+        X509Certificate[] resolved = {testCert, testCert2};
 
-        X509ExtendedTrustManager delegate = mock(X509ExtendedTrustManager.class);
-
+        CapturingDelegate delegate = new CapturingDelegate();
         SancusAgentTrustManager.resolveCallback = chain -> resolved;
 
         X509Certificate[][] capturedThreadLocal = {null};
@@ -464,6 +470,41 @@ class SancusAgentTrustManagerTest {
         assertSame(resolved, capturedThreadLocal[0]);
         // ThreadLocal should be cleared after the call
         assertNull(SancusAgentTrustManager.lastResolvedChain.get());
+    }
+
+    /**
+     * Minimal X509ExtendedTrustManager that captures the chain passed to checkServerTrusted.
+     * Avoids Mockito dependency.
+     */
+    private static class CapturingDelegate extends X509ExtendedTrustManager {
+        X509Certificate[] lastChain;
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {
+            this.lastChain = chain;
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket) {
+            this.lastChain = chain;
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine) {
+            this.lastChain = chain;
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket) {}
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine) {}
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
     }
 }
 ```
