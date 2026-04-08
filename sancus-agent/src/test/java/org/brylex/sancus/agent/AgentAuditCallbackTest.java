@@ -14,6 +14,8 @@ import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
+import org.brylex.sancus.agent.bootstrap.SancusAgentTrustManager;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class AgentAuditCallbackTest {
@@ -42,8 +44,10 @@ class AgentAuditCallbackTest {
     void tearDown() {
         sancusLogger.removeHandler(logHandler);
         sancusLogger.setUseParentHandlers(true);
+        System.clearProperty("sancus.checks.chain");
         AgentConfig.reset();
         AuditCache.INSTANCE.clear();
+        SancusAgentTrustManager.lastResolvedChain.remove();
     }
 
     @Test
@@ -89,6 +93,37 @@ class AgentAuditCallbackTest {
         logHandler.records.clear();
         callback.accept(chain, false); // second call — should be deduped
         assertEquals(0, logHandler.records.size(), "Expected no logs on second call (deduped)");
+    }
+
+    @Test
+    void readsResolvedChainFromThreadLocal() {
+        System.setProperty("sancus.log.level", "OK");
+        System.setProperty("sancus.checks.chain", "true");
+        AgentConfig.reset();
+
+        X509Certificate[] resolvedChain = new X509Certificate[]{cert};
+        SancusAgentTrustManager.lastResolvedChain.set(resolvedChain);
+
+        AgentAuditCallback callback = new AgentAuditCallback();
+        // Should not throw — resolvedChain is read from ThreadLocal fallback
+        callback.accept(new X509Certificate[]{cert}, false);
+
+        assertFalse(logHandler.records.isEmpty(), "Expected findings when chain check is enabled with resolved chain");
+    }
+
+    @Test
+    void worksWithoutResolvedChain() {
+        System.setProperty("sancus.log.level", "OK");
+        System.setProperty("sancus.checks.chain", "true");
+        AgentConfig.reset();
+
+        // No ThreadLocal set — resolvedChain should be null
+        AgentAuditCallback callback = new AgentAuditCallback();
+        // Should not throw even without resolved chain
+        callback.accept(new X509Certificate[]{cert}, false);
+
+        // Still runs other checks
+        assertFalse(logHandler.records.isEmpty());
     }
 
     // --- Custom JUL handler ---

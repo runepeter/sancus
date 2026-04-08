@@ -11,7 +11,7 @@ import java.util.function.Function;
 
 /**
  * Bootstrap shim — lives in the bootstrap classloader. NO references to sancus-core allowed.
- * Only JDK types + the BiConsumer callback that is injected by premain().
+ * Only JDK types + the callbacks that are injected by premain().
  */
 public class SancusAgentTrustManager extends X509ExtendedTrustManager {
 
