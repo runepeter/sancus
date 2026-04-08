@@ -13,7 +13,7 @@ Når et TLS-handshake feiler fordi serveren sender en ufullstendig sertifikatkje
 - Agent: Resolvede kjeder caches med TTL for å unngå gjentatte nettverkskall
 - Agent: Fail-open — hvis AIA-resolving feiler, sendes original kjede videre uendret
 - Agent: Aktivert by default, konfigurerbart via `sancus.aia.resolve`
-- CLI: `sancus resolve --keystore <path>` skriver en PKCS12-fil med alle resolvede sertifikater
+- CLI: `sancus resolve --keystore <path>` skriver en JKS-fil med alle resolvede sertifikater
 - Tester for alle nye komponenter
 
 ## Out of scope
@@ -21,7 +21,7 @@ Når et TLS-handshake feiler fordi serveren sender en ufullstendig sertifikatkje
 - Persistent caching av AIA-resolvede sertifikater på disk (kun in-memory)
 - Mutasjon av JVM-ens globale TrustStore (cacerts)
 - Client-sertifikat-resolving (kun server-kjeder)
-- Konfigurerbar KeyStore-type i CLI (kun PKCS12 for MVP)
+- Konfigurerbar KeyStore-type i CLI (kun JKS for MVP)
 
 ## Verifiseringskommandoer
 
@@ -50,7 +50,7 @@ checkServerTrusted(chain, authType):
      - Fail-open: exception → returner original chain
      - Null callback → returner original chain
   2. delegate.checkServerTrusted(extendedChain, authType)
-  3. fireAudit(extendedChain, rejected)
+  3. fireAudit(chain, rejected)  // NB: original chain, ikke extendedChain
 ```
 
 ---
@@ -81,7 +81,7 @@ private X509Certificate[] tryResolve(X509Certificate[] chain) {
 }
 ```
 
-Alle tre `checkServerTrusted()`-overloads endres til å kalle `tryResolve(chain)` først, og bruke resultatet for delegering og audit.
+Alle tre `checkServerTrusted()`-overloads endres til å kalle `tryResolve(chain)` først, og bruke resultatet for delegering. Audit-callbacken mottar fortsatt den **originale** kjeden fra serveren — ikke den resolvede — slik at `ChainCompletenessCheck` fortsetter å rapportere manglende intermediates.
 
 ### 2. AgentResolveCallback (ny klasse, agent classloader)
 
@@ -93,7 +93,7 @@ Alle tre `checkServerTrusted()`-overloads endres til å kalle `tryResolve(chain)
 2. Sjekk cache — hvis nylig resolvet, returner cachet kjede
 3. Registrer BouncyCastle-provider hvis ikke allerede registrert (`Security.addProvider(new BouncyCastleProvider())` — idempotent, returnerer -1 hvis allerede registrert)
 4. Bygg `CertificateChain` fra arrayet
-5. Kjør `RemoteResolver.resolve()` for å hente manglende sertifikater via AIA
+5. Kjør `RemoteResolver.resolve()` for å hente manglende sertifikater via AIA. **NB:** `RemoteResolver` skriver `System.out.println()` under nedlasting — dette må dempes i agent-modus for å unngå å forurense applikasjonens stdout. Løsning: redirect `System.out` midlertidig til en no-op stream under kallet, eller refaktorer `RemoteResolver` til å bruke `java.util.logging` (foretrukket, ryddigere langsiktig).
 6. Konverter tilbake til `X509Certificate[]` (leaf → intermediates → root)
 7. Lagre i cache med TTL
 8. Returner utvidet kjede
@@ -158,7 +158,7 @@ Uten `--keystore`: uendret oppførsel.
 ### Integrasjonstester
 
 - **Agent premain:** Server med ufullstendig kjede → verifiser at handshake lykkes med AIA-resolve aktiv
-- **CLI:** `--keystore` flagg → verifiser at PKCS12-fil skrives og er lesbar
+- **CLI:** `--keystore` flagg → verifiser at JKS-fil skrives og kan leses tilbake med `Util.loadKeyStore()`
 
 ---
 
@@ -174,4 +174,6 @@ Uten `--keystore`: uendret oppførsel.
 | Kjede til delegat | Hele utvidede kjeden (server → root) | TrustManager bestemmer selv |
 | CLI output | JKS KeyStore | Kompatibelt med eksisterende `Util.loadKeyStore()` og hele kodebasen |
 | BouncyCastle i agent | Registreres av `AgentResolveCallback` | `RemoteResolver` krever BC-provider, som kun CLI registrerer i dag |
+| Audit-chain | Original (ikke resolvet) chain til audit | `ChainCompletenessCheck` må se ufullstendig kjede for å rapportere |
+| RemoteResolver stdout | Dempes i agent-modus | Unngå å lekke "Downloading issuer..." til appens stdout |
 | Cache | TTL-basert, likt AuditCache | Gjenbruk eksisterende mønster |
