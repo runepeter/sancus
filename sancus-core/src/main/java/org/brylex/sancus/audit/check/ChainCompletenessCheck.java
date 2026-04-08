@@ -8,6 +8,7 @@ import org.brylex.sancus.audit.HandshakeInfo;
 import org.brylex.sancus.audit.Severity;
 import org.brylex.sancus.resolver.RemoteResolver;
 
+import javax.security.auth.x500.X500Principal;
 import java.security.cert.X509Certificate;
 import java.util.List;
 
@@ -23,6 +24,20 @@ public class ChainCompletenessCheck implements AuditCheck {
 
         if (certChain.isComplete()) {
             return List.of(new ChainFinding(Severity.OK, chain.length, true, List.of()));
+        }
+
+        X509Certificate[] resolvedChain = handshakeInfo.resolvedChain();
+        if (resolvedChain != null && resolvedChain.length > chain.length) {
+            X509Certificate last = resolvedChain[resolvedChain.length - 1];
+            X500Principal issuer = last.getIssuerX500Principal();
+            boolean complete = last.getSubjectX500Principal().equals(issuer);
+            if (complete) {
+                int extra = resolvedChain.length - chain.length;
+                return List.of(new ChainFinding(Severity.WARNING, chain.length, false,
+                        List.of(extra + " certificate(s) resolved via AIA")));
+            } else {
+                return List.of(new ChainFinding(Severity.CRITICAL, chain.length, false, List.of(issuer.getName())));
+            }
         }
 
         try {

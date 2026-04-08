@@ -193,6 +193,33 @@ public class AuditCheckTest {
             assertTrue(findings.stream().anyMatch(f -> f.severity() == Severity.CRITICAL),
                     "Expected CRITICAL for incomplete chain without resolvable AIA");
         }
+
+        @Test
+        void usesResolvedChainWhenPresent() throws Exception {
+            X509Certificate leaf = Certificates.LOCALHOST;
+            X509Certificate fakeRoot = generateCert(365, 2048, "SHA256WithRSA");
+            X509Certificate[] resolvedChain = new X509Certificate[]{leaf, fakeRoot};
+            HandshakeInfo info = new HandshakeInfo("TLSv1.3", "TLS_AES_256_GCM_SHA384",
+                    new X509Certificate[]{leaf}, resolvedChain);
+            List<Finding> findings = check.check(info, new X509Certificate[]{leaf});
+            assertFalse(findings.isEmpty());
+            Finding.ChainFinding cf = (Finding.ChainFinding) findings.getFirst();
+            assertEquals(Severity.WARNING, cf.severity());
+            assertTrue(cf.summary().contains("resolved via AIA"));
+        }
+
+        @Test
+        void criticalWhenResolvedChainIsIncomplete() {
+            X509Certificate leaf = Certificates.LOCALHOST;
+            X509Certificate intermediate = Certificates.AMAZON_CA;
+            X509Certificate[] resolvedChain = new X509Certificate[]{leaf, intermediate};
+            HandshakeInfo info = new HandshakeInfo("TLSv1.3", "TLS_AES_256_GCM_SHA384",
+                    new X509Certificate[]{leaf}, resolvedChain);
+            List<Finding> findings = check.check(info, new X509Certificate[]{leaf});
+            assertFalse(findings.isEmpty());
+            Finding.ChainFinding cf = (Finding.ChainFinding) findings.getFirst();
+            assertEquals(Severity.CRITICAL, cf.severity());
+        }
     }
 
     @Nested
