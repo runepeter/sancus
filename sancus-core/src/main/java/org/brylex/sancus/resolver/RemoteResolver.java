@@ -24,11 +24,14 @@ import java.net.URL;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
+import java.util.logging.Logger;
 
 /**
  * Created by <a href="mailto:rpbjo@nets.eu">Rune Peter Bjørnstad</a> on 13/04/2017.
  */
 public class RemoteResolver implements CertificateChain.Resolver {
+
+    private static final Logger LOG = Logger.getLogger("sancus");
 
     final JcaX509CertificateConverter converter = new JcaX509CertificateConverter().setProvider(BouncyCastleProvider.PROVIDER_NAME);
 
@@ -133,7 +136,7 @@ public class RemoteResolver implements CertificateChain.Resolver {
             URL url = getIssuerCaUrl(chain.head().certificate());
 
             if (url != null) {
-                System.out.println("Downloading issuer [" + issuer.dn() + "] certificate from [" + url + "]\n");
+                LOG.info("Downloading issuer [" + issuer.dn() + "] certificate from [" + url + "]");
                 X509Certificate certificate = downloadX509Certificate(url);
                 issuer.apply(certificate, ResolverSource.REMOTE);
             }
@@ -165,12 +168,12 @@ public class RemoteResolver implements CertificateChain.Resolver {
             URL url = getIssuerCaUrl(entry.certificate());
 
             if (url == null) {
-                System.out.println("There's no remote download location for [" + issuer.dn() + "].\n");
+                LOG.info("There's no remote download location for [" + issuer.dn() + "].");
                 entry.last(issuer);
                 return entry;
             }
 
-            System.out.println("Downloading issuer [" + entry.issuedBy().dn() + "] certificate from [" + url + "]\n");
+            LOG.info("Downloading issuer [" + entry.issuedBy().dn() + "] certificate from [" + url + "]");
             X509Certificate certificate = downloadX509Certificate(url);
             issuer.apply(certificate, ResolverSource.REMOTE);
         }

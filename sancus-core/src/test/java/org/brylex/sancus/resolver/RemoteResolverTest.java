@@ -8,11 +8,19 @@ import org.brylex.sancus.util.TestServer;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.net.URL;
 import java.security.Security;
 import java.security.cert.X509Certificate;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.brylex.sancus.util.Certificates.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -81,6 +89,45 @@ public class RemoteResolverTest {
         assertFalse(resolved.isComplete());
         assertTrue(resolved.last().dn().getName().contains("OU=ValiCert Class 2 Policy Validation Authority,"));
         assertEquals(ResolverSource.MISSING, resolved.last().resolvedBy());
+    }
+
+    @Test
+    public void resolveLogsToJulNotSystemOut() throws Exception {
+
+        try (TestServer server = new TestServer()) {
+
+            // Capture System.out
+            PrintStream originalOut = System.out;
+            ByteArrayOutputStream captured = new ByteArrayOutputStream();
+            System.setOut(new PrintStream(captured));
+
+            // Capture JUL logger
+            Logger logger = Logger.getLogger("sancus");
+            List<String> logMessages = new ArrayList<>();
+            Handler testHandler = new Handler() {
+                @Override public void publish(LogRecord record) { logMessages.add(record.getMessage()); }
+                @Override public void flush() {}
+                @Override public void close() {}
+            };
+            logger.addHandler(testHandler);
+            logger.setLevel(Level.ALL);
+
+            try {
+                RemoteResolver resolver = new RemoteResolver();
+                resolver.resolve(CertificateChain.create(LOCALHOST));
+            } finally {
+                System.setOut(originalOut);
+                logger.removeHandler(testHandler);
+            }
+
+            // Nothing should have been written to System.out
+            assertEquals("", captured.toString(), "RemoteResolver should not write to System.out");
+
+            // At least one message should have been logged via JUL
+            assertFalse(logMessages.isEmpty(), "RemoteResolver should log via JUL");
+            assertTrue(logMessages.stream().anyMatch(m -> m.contains("Downloading issuer")),
+                    "Expected a 'Downloading issuer' log message");
+        }
     }
 
     private byte[] downloadBytes(String path) {

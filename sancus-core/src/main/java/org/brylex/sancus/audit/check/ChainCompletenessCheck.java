@@ -8,10 +8,7 @@ import org.brylex.sancus.audit.HandshakeInfo;
 import org.brylex.sancus.audit.Severity;
 import org.brylex.sancus.resolver.RemoteResolver;
 
-import java.io.OutputStream;
-import java.io.PrintStream;
 import java.security.cert.X509Certificate;
-import java.util.Arrays;
 import java.util.List;
 
 public class ChainCompletenessCheck implements AuditCheck {
@@ -28,13 +25,9 @@ public class ChainCompletenessCheck implements AuditCheck {
             return List.of(new ChainFinding(Severity.OK, chain.length, true, List.of()));
         }
 
-        PrintStream originalOut = System.out;
         try {
-            System.setOut(new PrintStream(OutputStream.nullOutputStream()));
             new RemoteResolver().resolve(certChain);
         } catch (Exception ignored) {
-        } finally {
-            System.setOut(originalOut);
         }
 
         if (certChain.isComplete()) {
