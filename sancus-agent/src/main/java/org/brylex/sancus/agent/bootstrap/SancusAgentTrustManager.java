@@ -7,6 +7,7 @@ import java.net.Socket;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 /**
  * Bootstrap shim — lives in the bootstrap classloader. NO references to sancus-core allowed.
@@ -16,6 +17,9 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
 
     /** Set by premain() from agent classloader. Volatile for visibility across threads. */
     public static volatile BiConsumer<X509Certificate[], Boolean> auditCallback = null;
+
+    /** Set by premain() when AIA resolve is enabled. Transforms the chain before delegation. */
+    public static volatile Function<X509Certificate[], X509Certificate[]> resolveCallback = null;
 
     private final X509ExtendedTrustManager extendedDelegate;
     private final X509TrustManager simpleDelegate;
@@ -37,47 +41,50 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
 
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+        X509Certificate[] resolved = resolveChain(chain);
         CertificateException thrown = null;
         try {
-            simpleDelegate.checkServerTrusted(chain, authType);
+            simpleDelegate.checkServerTrusted(resolved, authType);
         } catch (CertificateException e) {
             thrown = e;
         } finally {
-            fireAudit(chain, thrown != null);
+            fireAudit(resolved, thrown != null);
         }
         if (thrown != null) throw thrown;
     }
 
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket) throws CertificateException {
+        X509Certificate[] resolved = resolveChain(chain);
         CertificateException thrown = null;
         try {
             if (delegateIsExtended) {
-                extendedDelegate.checkServerTrusted(chain, authType, socket);
+                extendedDelegate.checkServerTrusted(resolved, authType, socket);
             } else {
-                simpleDelegate.checkServerTrusted(chain, authType);
+                simpleDelegate.checkServerTrusted(resolved, authType);
             }
         } catch (CertificateException e) {
             thrown = e;
         } finally {
-            fireAudit(chain, thrown != null);
+            fireAudit(resolved, thrown != null);
         }
         if (thrown != null) throw thrown;
     }
 
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine) throws CertificateException {
+        X509Certificate[] resolved = resolveChain(chain);
         CertificateException thrown = null;
         try {
             if (delegateIsExtended) {
-                extendedDelegate.checkServerTrusted(chain, authType, engine);
+                extendedDelegate.checkServerTrusted(resolved, authType, engine);
             } else {
-                simpleDelegate.checkServerTrusted(chain, authType);
+                simpleDelegate.checkServerTrusted(resolved, authType);
             }
         } catch (CertificateException e) {
             thrown = e;
         } finally {
-            fireAudit(chain, thrown != null);
+            fireAudit(resolved, thrown != null);
         }
         if (thrown != null) throw thrown;
     }
@@ -113,6 +120,18 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
     }
 
     // ---- Internal ----
+
+    private X509Certificate[] resolveChain(X509Certificate[] chain) {
+        try {
+            Function<X509Certificate[], X509Certificate[]> cb = resolveCallback;
+            if (cb != null) {
+                return cb.apply(chain);
+            }
+        } catch (Exception ignored) {
+            // Resolve must never affect SSL handshake outcome
+        }
+        return chain;
+    }
 
     private void fireAudit(X509Certificate[] chain, boolean rejected) {
         try {
