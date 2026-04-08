@@ -17,6 +17,9 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
     /** Set by premain() from agent classloader. Volatile for visibility across threads. */
     public static volatile BiConsumer<X509Certificate[], Boolean> auditCallback = null;
 
+    /** Resolved certificate chain from the last checkServerTrusted call on this thread. */
+    public static final ThreadLocal<X509Certificate[]> lastResolvedChain = new ThreadLocal<>();
+
     private final X509ExtendedTrustManager extendedDelegate;
     private final X509TrustManager simpleDelegate;
     private final boolean delegateIsExtended;
@@ -43,6 +46,7 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
         } catch (CertificateException e) {
             thrown = e;
         } finally {
+            lastResolvedChain.set(thrown == null ? chain : null);
             fireAudit(chain, thrown != null);
         }
         if (thrown != null) throw thrown;
@@ -60,6 +64,7 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
         } catch (CertificateException e) {
             thrown = e;
         } finally {
+            lastResolvedChain.set(thrown == null ? chain : null);
             fireAudit(chain, thrown != null);
         }
         if (thrown != null) throw thrown;
@@ -77,6 +82,7 @@ public class SancusAgentTrustManager extends X509ExtendedTrustManager {
         } catch (CertificateException e) {
             thrown = e;
         } finally {
+            lastResolvedChain.set(thrown == null ? chain : null);
             fireAudit(chain, thrown != null);
         }
         if (thrown != null) throw thrown;
