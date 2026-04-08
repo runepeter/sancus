@@ -23,6 +23,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
+import java.security.cert.X509Certificate;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 import static org.fusesource.jansi.Ansi.Color.BLUE;
@@ -52,9 +54,16 @@ public class ResolveCommand implements Callable<Integer> {
     @Option(names = {"--interactive", "-i"}, description = "Interactive mode")
     boolean interactiveMode = false;
 
+    @Option(names = {"--keystore"}, description = "Write resolved chain to JKS keystore (non-interactive)")
+    Path keystorePath;
+
     @Override
     public Integer call() {
         CertificateChain chain = resolveCertificateChain();
+
+        if (keystorePath != null) {
+            return exportKeystore(chain);
+        }
 
         String command;
         while (true) {
@@ -72,6 +81,48 @@ public class ResolveCommand implements Callable<Integer> {
             if ("s".equalsIgnoreCase(command)) {
                 saveCommandHandler(chain);
             }
+        }
+    }
+
+    Integer exportKeystore(CertificateChain chain) {
+        if (chain.toList().isEmpty()) {
+            System.err.println("Error: No certificates received from handshake. Cannot write keystore.");
+            return 2;
+        }
+
+        try {
+            new RemoteResolver().resolve(chain);
+        } catch (Exception e) {
+            System.err.println("Warning: AIA resolution failed: " + e.getMessage());
+        }
+
+        List<X509Certificate> resolvedCerts = chain.toList();
+
+        try {
+            KeyStore ks = KeyStore.getInstance("JKS");
+            ks.load(null);
+
+            for (X509Certificate cert : resolvedCerts) {
+                String cn = cert.getSubjectX500Principal().getName();
+                String alias = cn.length() > 64 ? cn.substring(0, 64) : cn;
+                int i = 1;
+                String uniqueAlias = alias;
+                while (ks.containsAlias(uniqueAlias)) {
+                    uniqueAlias = alias + "_" + i++;
+                }
+                ks.setCertificateEntry(uniqueAlias, cert);
+            }
+
+            try (OutputStream os = Files.newOutputStream(keystorePath, StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING)) {
+                ks.store(os, Util.DEFAULT_KEYSTORE_PASSWORD.toCharArray());
+            }
+
+            System.out.println("Wrote " + resolvedCerts.size() + " certificate(s) to [" + keystorePath.toAbsolutePath() + "].");
+            return 0;
+        } catch (Exception e) {
+            System.err.println("Error: Failed to write keystore: " + e.getMessage());
+            return 2;
         }
     }
 
