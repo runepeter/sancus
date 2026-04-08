@@ -48,17 +48,14 @@ public class SancusAgent {
         // SSLContext.init() fires before callback is set
         AgentAuditCallback callback = new AgentAuditCallback();
         SancusAgentTrustManager.auditCallback = callback;
+        setBootstrapField("auditCallback", callback, "audit may not work");
 
-        // Also set on the bootstrap-loaded copy
-        try {
-            Class<?> bootstrapCopy = Class.forName(
-                    "org.brylex.sancus.agent.bootstrap.SancusAgentTrustManager", true, null);
-            if (bootstrapCopy != SancusAgentTrustManager.class) {
-                Field callbackField = bootstrapCopy.getField("auditCallback");
-                callbackField.set(null, callback);
-            }
-        } catch (ClassNotFoundException e) {
-            logger.warning("[sancus] Bootstrap copy of SancusAgentTrustManager not found — audit may not work: " + e.getMessage());
+        // Wire AIA resolve callback (if enabled)
+        if (config.aiaResolveEnabled()) {
+            AgentResolveCallback resolveCallback = new AgentResolveCallback();
+            SancusAgentTrustManager.resolveCallback = resolveCallback;
+            setBootstrapField("resolveCallback", resolveCallback, "AIA resolve will not work");
+            logger.info("[sancus] AIA resolve enabled");
         }
 
         // Install instrumentation
@@ -72,6 +69,20 @@ public class SancusAgent {
             .installOn(inst);
 
         logger.info("[sancus] Agent installed — intercepting SSLContext.init()");
+    }
+
+    private static void setBootstrapField(String fieldName, Object value, String context) {
+        try {
+            Class<?> bootstrapCopy = Class.forName(
+                    "org.brylex.sancus.agent.bootstrap.SancusAgentTrustManager", true, null);
+            if (bootstrapCopy != SancusAgentTrustManager.class) {
+                bootstrapCopy.getField(fieldName).set(null, value);
+            }
+        } catch (ClassNotFoundException e) {
+            logger.warning("[sancus] Bootstrap copy not found — " + context + ": " + e.getMessage());
+        } catch (ReflectiveOperationException e) {
+            logger.warning("[sancus] Failed to set " + fieldName + " on bootstrap copy: " + e.getMessage());
+        }
     }
 
     private static void injectBootstrapClass(Instrumentation inst, Path tempDir, String... classResources)
