@@ -12,6 +12,10 @@
     <artifactId>sancus-agent</artifactId>
     <packaging>jar</packaging>
 
+    <name>Sancus Agent</name>
+    <description>Java agent that intercepts X509TrustManager.checkServerTrusted to audit and resolve TLS certificate chains at runtime.</description>
+    <url>https://github.com/runepeter/sancus</url>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>

@@ -12,6 +12,10 @@
     <artifactId>sancus-core</artifactId>
     <packaging>jar</packaging>
 
+    <name>Sancus Core</name>
+    <description>Core library for TLS certificate chain inspection and resolution.</description>
+    <url>https://github.com/runepeter/sancus</url>
+
     <dependencies>
         <dependency>
             <groupId>org.bouncycastle</groupId>

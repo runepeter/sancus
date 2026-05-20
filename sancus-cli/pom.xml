@@ -12,6 +12,10 @@
     <artifactId>sancus-cli</artifactId>
     <packaging>jar</packaging>
 
+    <name>Sancus CLI</name>
+    <description>Command-line interface for sancus — inspect, audit, and resolve TLS certificate chains.</description>
+    <url>https://github.com/runepeter/sancus</url>
+
     <dependencies>
         <dependency>
             <groupId>org.brylex</groupId>
