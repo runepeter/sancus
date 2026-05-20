@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.brylex</groupId>
         <artifactId>sancus</artifactId>
-        <version>develop-SNAPSHOT</version>
+        <version>0.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>sancus-agent</artifactId>
@@ -49,12 +49,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.3</version>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.6.0</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -88,7 +86,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
-                <version>3.5.3</version>
                 <configuration>
                     <argLine>-javaagent:${project.build.directory}/${project.build.finalName}.jar -Dsancus.log.level=OK --add-opens java.base/javax.net.ssl=ALL-UNNAMED</argLine>
                 </configuration>
