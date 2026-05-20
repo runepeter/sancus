@@ -5,7 +5,7 @@
 
     <groupId>org.brylex</groupId>
     <artifactId>sancus</artifactId>
-    <version>0.2-SNAPSHOT</version>
+    <version>0.2</version>
     <packaging>pom</packaging>
 
     <name>Sancus</name>
@@ -29,7 +29,7 @@
         <connection>scm:git:git://github.com/runepeter/sancus.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/runepeter/sancus.git</developerConnection>
         <url>https://github.com/runepeter/sancus</url>
-        <tag>HEAD</tag>
+        <tag>sancus-0.2</tag>
     </scm>
 
     <developers>
