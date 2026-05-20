@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.brylex</groupId>
         <artifactId>sancus</artifactId>
-        <version>0.2</version>
+        <version>0.3-SNAPSHOT</version>
     </parent>
 
     <artifactId>sancus-cli</artifactId>
